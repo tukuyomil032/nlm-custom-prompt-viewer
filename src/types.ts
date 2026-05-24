@@ -1,4 +1,14 @@
-export const SUPPORTED_ARTIFACT_TYPES = ["slides", "video", "audio", "quiz", "flashcards"] as const;
+export const SUPPORTED_ARTIFACT_TYPES = [
+  "slides",
+  "video",
+  "audio",
+  "quiz",
+  "flashcards",
+  "report",
+  "mind_map",
+  "infographic",
+  "data_table",
+] as const;
 
 export type SupportedArtifactType = (typeof SUPPORTED_ARTIFACT_TYPES)[number];
 export type PromptMethod = "direct" | "qa_fallback";
@@ -25,15 +35,25 @@ export interface ArtifactRecord {
   title: string;
   type: SupportedArtifactType | "unsupported";
   rawType: string;
+  createdAt: string | null;
+  raw: unknown;
+}
+
+export interface NotebookRecord {
+  id: string;
+  title: string;
+  createdAt: string | null;
   raw: unknown;
 }
 
 export interface ListPromptOptions {
   type?: SupportedArtifactType;
   limit?: number;
+  infer?: boolean;
 }
 
 export interface NotebookLmAdapter {
+  listNotebooks(): Promise<NotebookRecord[]>;
   listArtifacts(notebookId: string): Promise<ArtifactRecord[]>;
   askNotebookForPrompt(
     notebookId: string,

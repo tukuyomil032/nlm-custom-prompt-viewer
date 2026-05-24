@@ -15,6 +15,9 @@ typecheck:
 dev:
   bun run dev
 
+dev-cli:
+  bun src/index.ts
+
 lint:
   bun run lint
 

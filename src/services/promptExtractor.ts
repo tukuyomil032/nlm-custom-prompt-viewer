@@ -66,10 +66,52 @@ function pickBestPrompt(candidates: string[]): string | null {
   return normalizePromptText(sorted[0]);
 }
 
+export interface PromptListFailure {
+  artifactId: string;
+  artifactTitle: string;
+  artifactType: string;
+  reason: "unsupported_type" | "not_extracted" | "extraction_failed";
+}
+
+export interface PromptListEntry {
+  artifactId: string;
+  artifactTitle: string;
+  artifactType: string;
+  prompt: PromptResult | null;
+  failure: PromptListFailure | null;
+}
+
+export interface PromptListDetailedResult {
+  results: PromptResult[];
+  failures: PromptListFailure[];
+  entries: PromptListEntry[];
+}
+
 export function summarizePromptText(text: string): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
   if (oneLine.length <= 120) return oneLine;
   return `${oneLine.slice(0, 117)}...`;
+}
+
+async function mapLimit<T, U>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<U>,
+): Promise<U[]> {
+  const results = Array.from<U>({ length: items.length });
+  let nextIndex = 0;
+
+  async function run(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => run());
+  await Promise.all(workers);
+  return results;
 }
 
 export class PromptExtractorService {
@@ -79,15 +121,72 @@ export class PromptExtractorService {
     notebookId: string,
     options: ListPromptOptions = {},
   ): Promise<PromptResult[]> {
+    const detailed = await this.listPromptsDetailed(notebookId, options);
+    return detailed.results;
+  }
+
+  public async listPromptsDetailed(
+    notebookId: string,
+    options: ListPromptOptions = {},
+  ): Promise<PromptListDetailedResult> {
     const artifacts = await this.adapter.listArtifacts(notebookId);
-    const filtered = this.filterArtifacts(artifacts, options.type, options.limit);
+    const { targets, skippedUnsupported } = this.partitionArtifacts(
+      artifacts,
+      options.type,
+      options.limit,
+    );
 
     const results: PromptResult[] = [];
-    for (const artifact of filtered) {
-      const extracted = await this.extractForArtifact(notebookId, artifact);
-      if (extracted) results.push(extracted);
+    const entries: PromptListEntry[] = [];
+    const failures: PromptListFailure[] = skippedUnsupported.map((artifact) => ({
+      artifactId: artifact.id,
+      artifactTitle: artifact.title,
+      artifactType: artifact.rawType,
+      reason: "unsupported_type",
+    }));
+    for (const failure of failures) {
+      entries.push({
+        artifactId: failure.artifactId,
+        artifactTitle: failure.artifactTitle,
+        artifactType: failure.artifactType,
+        prompt: null,
+        failure,
+      });
     }
-    return results;
+
+    const extractedTargets = options.infer
+      ? await mapLimit(targets, 2, (artifact) => this.extractForArtifact(notebookId, artifact))
+      : targets.map((artifact) => this.extractDirectForArtifact(notebookId, artifact));
+
+    for (const [index, artifact] of targets.entries()) {
+      const extracted = extractedTargets[index];
+      if (extracted) {
+        results.push(extracted);
+        entries.push({
+          artifactId: artifact.id,
+          artifactTitle: artifact.title,
+          artifactType: artifact.type,
+          prompt: extracted,
+          failure: null,
+        });
+      } else {
+        const failure: PromptListFailure = {
+          artifactId: artifact.id,
+          artifactTitle: artifact.title,
+          artifactType: artifact.rawType,
+          reason: options.infer ? "extraction_failed" : "not_extracted",
+        };
+        failures.push(failure);
+        entries.push({
+          artifactId: artifact.id,
+          artifactTitle: artifact.title,
+          artifactType: artifact.type,
+          prompt: null,
+          failure,
+        });
+      }
+    }
+    return { results, failures, entries };
   }
 
   public async getPrompt(notebookId: string, artifactId: string): Promise<PromptResult> {
@@ -109,14 +208,23 @@ export class PromptExtractorService {
     return result;
   }
 
-  private filterArtifacts(
+  private partitionArtifacts(
     artifacts: ArtifactRecord[],
     type?: SupportedArtifactType,
     limit?: number,
-  ): ArtifactRecord[] {
+  ): {
+    targets: ArtifactRecord[];
+    skippedUnsupported: ArtifactRecord[];
+  } {
     const onlySupported = artifacts.filter((item) => isSupportedType(item.type));
     const byType = type ? onlySupported.filter((item) => item.type === type) : onlySupported;
-    return typeof limit === "number" && limit > 0 ? byType.slice(0, limit) : byType;
+    const limited = typeof limit === "number" && limit > 0 ? byType.slice(0, limit) : byType;
+    const skippedUnsupported =
+      type === undefined ? artifacts.filter((item) => !isSupportedType(item.type)) : [];
+    return {
+      targets: limited,
+      skippedUnsupported,
+    };
   }
 
   private async extractForArtifact(
@@ -125,29 +233,13 @@ export class PromptExtractorService {
   ): Promise<PromptResult | null> {
     if (!isSupportedType(artifact.type)) return null;
 
-    const warnings: string[] = [];
-    const directCandidates = collectCandidates(artifact.raw);
-    const directPrompt = pickBestPrompt(directCandidates);
-
-    if (directPrompt) {
-      return {
-        notebookId,
-        artifactId: artifact.id,
-        artifactType: artifact.type,
-        artifactTitle: artifact.title,
-        prompt: {
-          text: directPrompt,
-          method: "direct",
-          confidence: "high",
-        },
-        retrievedAt: new Date().toISOString(),
-        warnings,
-      };
-    }
+    const direct = this.extractDirectForArtifact(notebookId, artifact);
+    if (direct) return direct;
 
     const fallback = await this.adapter.askNotebookForPrompt(notebookId, artifact);
     if (!fallback) return null;
 
+    const warnings: string[] = [];
     warnings.push("Direct extraction failed; recovered via Notebook Q&A inference.");
     return {
       notebookId,
@@ -161,6 +253,31 @@ export class PromptExtractorService {
       },
       retrievedAt: new Date().toISOString(),
       warnings,
+    };
+  }
+
+  private extractDirectForArtifact(
+    notebookId: string,
+    artifact: ArtifactRecord,
+  ): PromptResult | null {
+    if (!isSupportedType(artifact.type)) return null;
+
+    const directCandidates = collectCandidates(artifact.raw);
+    const directPrompt = pickBestPrompt(directCandidates);
+    if (!directPrompt) return null;
+
+    return {
+      notebookId,
+      artifactId: artifact.id,
+      artifactType: artifact.type,
+      artifactTitle: artifact.title,
+      prompt: {
+        text: directPrompt,
+        method: "direct",
+        confidence: "high",
+      },
+      retrievedAt: new Date().toISOString(),
+      warnings: [],
     };
   }
 }
