@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import type { PromptResult } from "../types.js";
 
@@ -7,6 +8,26 @@ export type SaveFormat = "json" | "md";
 export interface SaveOptions {
   format?: SaveFormat;
   out?: string;
+}
+
+function expandTilde(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(homedir(), p.slice(2));
+  }
+  return p;
+}
+
+function hasFileExtension(p: string): boolean {
+  const ext = path.extname(p);
+  return ext === ".json" || ext === ".md";
+}
+
+export function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function toMarkdown(result: PromptResult): string {
@@ -40,10 +61,11 @@ function toMarkdown(result: PromptResult): string {
 }
 
 function resolveDefaultTargets(result: PromptResult): Record<SaveFormat, string> {
-  const baseDir = path.resolve(process.cwd(), "outputs", result.notebookId);
+  const slug = slugify(result.artifactTitle) || result.artifactId;
+  const baseDir = path.resolve(process.cwd(), "outputs");
   return {
-    json: path.join(baseDir, `${result.artifactId}.json`),
-    md: path.join(baseDir, `${result.artifactId}.md`),
+    json: path.join(baseDir, `${slug}.json`),
+    md: path.join(baseDir, `${slug}.md`),
   };
 }
 
@@ -61,8 +83,9 @@ export async function savePromptResult(
   const written: string[] = [];
 
   if (options.out) {
-    const resolvedOut = path.resolve(process.cwd(), options.out);
-    if (requested.length === 1) {
+    const resolvedOut = path.resolve(process.cwd(), expandTilde(options.out));
+
+    if (hasFileExtension(options.out) && requested.length === 1) {
       const format = requested[0];
       const content =
         format === "json" ? `${JSON.stringify(result, null, 2)}\n` : toMarkdown(result);
@@ -70,9 +93,9 @@ export async function savePromptResult(
       return [resolvedOut];
     }
 
+    const slug = slugify(result.artifactTitle) || result.artifactId;
     for (const format of requested) {
-      const filename = `${result.artifactId}.${format}`;
-      const target = path.join(resolvedOut, filename);
+      const target = path.join(resolvedOut, `${slug}.${format}`);
       const content =
         format === "json" ? `${JSON.stringify(result, null, 2)}\n` : toMarkdown(result);
       await writeSafely(target, content);

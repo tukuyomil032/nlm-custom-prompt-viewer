@@ -19,7 +19,7 @@ import {
   type PromptListEntry,
   type PromptListFailure,
 } from "./services/promptExtractor.js";
-import { savePromptResult, type SaveFormat } from "./services/saveOutput.js";
+import { savePromptResult, slugify, type SaveFormat } from "./services/saveOutput.js";
 import {
   SUPPORTED_ARTIFACT_TYPES,
   type ArtifactRecord,
@@ -569,6 +569,7 @@ async function resolveSaveOptions(
   language: LanguageCode,
   options: GetCommandOptions,
   optionalPrompt: boolean,
+  defaultOut?: string,
 ): Promise<{ shouldSave: boolean; format?: SaveFormat; out?: string } | null> {
   if (options.save) {
     return {
@@ -598,7 +599,7 @@ async function resolveSaveOptions(
   );
   if (formatChoice === null) return null;
 
-  const out = await pickText(language, t(language, "prompt.select.out"));
+  const out = await pickText(language, t(language, "prompt.select.out"), defaultOut);
   if (out === null) return null;
   return {
     shouldSave: true,
@@ -676,16 +677,20 @@ async function runPromptGet(language: LanguageCode, deps: RuntimeDeps, input: Pr
     console.log(
       `${t(language, "prompt.field.method")}: ${result.prompt.method} (${result.prompt.confidence})`,
     );
-    console.log(`${t(language, "prompt.field.prompt")}: ${result.prompt.text}`);
+    console.log(chalk.bold.green(`${t(language, "prompt.field.prompt")}:`));
+    console.log(result.prompt.text);
     if (result.warnings.length > 0) {
       console.log(`${t(language, "prompt.field.warnings")}: ${result.warnings.join(" | ")}`);
     }
   }
 
+  const ext = input.options.format === "json" ? "json" : "md";
+  const defaultOut = `./outputs/${slugify(result.artifactTitle) || result.artifactId}.${ext}`;
   const saveOptions = await resolveSaveOptions(
     language,
     input.options,
     Boolean(input.optionalPrompt),
+    defaultOut,
   );
   if (!saveOptions || !saveOptions.shouldSave) return;
 
