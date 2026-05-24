@@ -1,20 +1,69 @@
 name: Publish to npm
 
 on:
-  release:
-    types:
-      - published
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
-  verify:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      package_version: ${{ steps.version.outputs.package_version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      should_publish: ${{ steps.tag.outputs.should_publish }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Resolve package version
+        id: version
+        run: |
+          PKG_VERSION="$(bun -e "const p = JSON.parse(await Bun.file('package.json').text()); console.log(p.version)")"
+          TAG_NAME="v${PKG_VERSION}"
+          echo "package_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Package version: ${PKG_VERSION}"
+          echo "Tag name: ${TAG_NAME}"
+
+      - name: Create and push tag if not exists
+        id: tag
+        env:
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+        run: |
+          if git ls-remote --tags --exit-code origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists. Skipping release/publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+          echo "Created and pushed ${TAG_NAME}"
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs:
+      - prepare
+    if: ${{ needs.prepare.outputs.should_publish == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag_name }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -28,32 +77,30 @@ jobs:
       - name: Run lint
         run: bun run lint
 
-      - name: Block prerelease publishing
-        if: ${{ github.event.release.prerelease }}
-        run: |
-          echo "Prerelease releases are not published by this workflow."
-          exit 1
-
-      - name: Validate release tag vs package version
+      - name: Validate tag vs package version
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag_name }}
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.package_version }}
         run: |
           TAG="${RELEASE_TAG#v}"
-          PKG_VERSION="$(bun -e "const p = JSON.parse(await Bun.file('package.json').text()); console.log(p.version)")"
-          echo "Release tag: ${RELEASE_TAG}"
-          echo "Package version: ${PKG_VERSION}"
-          if [ "${TAG}" != "${PKG_VERSION}" ]; then
-            echo "Tag/version mismatch: ${RELEASE_TAG} vs ${PKG_VERSION}"
+          echo "Tag: ${RELEASE_TAG}"
+          echo "Package version: ${PACKAGE_VERSION}"
+          if [ "${TAG}" != "${PACKAGE_VERSION}" ]; then
+            echo "Tag/version mismatch: ${RELEASE_TAG} vs ${PACKAGE_VERSION}"
             exit 1
           fi
 
   publish:
     needs:
+      - prepare
       - verify
+    if: ${{ needs.prepare.outputs.should_publish == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout tag
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag_name }}
 
       - name: Setup Node.js for npm Trusted Publishing
         uses: actions/setup-node@v4
