@@ -27,6 +27,7 @@ function normalizeConfig(input: unknown): AppConfig {
   if (!isRecord(input)) return DEFAULT_CONFIG;
 
   const update = isRecord(input.updateCheck) ? input.updateCheck : {};
+  const auth = isRecord(input.auth) ? input.auth : {};
   return {
     language: toLanguage(input.language),
     updateCheck: {
@@ -39,6 +40,22 @@ function normalizeConfig(input: unknown): AppConfig {
       latestSeenVersion:
         typeof update.latestSeenVersion === "string"
           ? update.latestSeenVersion
+          : null
+    },
+    auth: {
+      lastValidatedAt:
+        typeof auth.lastValidatedAt === "string" ? auth.lastValidatedAt : null,
+      lastSource:
+        auth.lastSource === "keychain" ||
+        auth.lastSource === "session_file" ||
+        auth.lastSource === "none"
+          ? auth.lastSource
+          : null,
+      lastStatus:
+        auth.lastStatus === "valid" ||
+        auth.lastStatus === "invalid" ||
+        auth.lastStatus === "missing"
+          ? auth.lastStatus
           : null
     }
   };

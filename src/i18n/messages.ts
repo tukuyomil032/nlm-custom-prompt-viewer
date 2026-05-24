@@ -30,6 +30,14 @@ const en: Dict = {
   "update.latest": "You are using the latest version ({current}).",
   "update.available": "Update available: {current} -> {latest}. Run `bun add -g {pkg}`.",
   "update.unreachable": "Could not reach npm registry. Skipping update check."
+  ,
+  "auth.description": "Authentication commands.",
+  "auth.status.valid": "Authentication status: valid ({source}).",
+  "auth.status.missing": "Authentication status: missing. Run `nlm auth login`.",
+  "auth.status.invalid": "Authentication status: invalid or expired.",
+  "auth.login.start": "Opening browser for Google sign-in...",
+  "auth.login.done": "Session saved securely.",
+  "auth.logout.done": "Local authentication data has been cleared."
 };
 
 const ja: Dict = {
@@ -60,6 +68,14 @@ const ja: Dict = {
   "update.latest": "最新バージョンを利用中です（{current}）。",
   "update.available": "更新があります: {current} -> {latest}。`bun add -g {pkg}` を実行してください。",
   "update.unreachable": "npmレジストリに接続できなかったため、更新確認をスキップしました。"
+  ,
+  "auth.description": "認証関連コマンドです。",
+  "auth.status.valid": "認証状態: 有効（{source}）。",
+  "auth.status.missing": "認証状態: 未設定です。`nlm auth login` を実行してください。",
+  "auth.status.invalid": "認証状態: 無効または期限切れです。",
+  "auth.login.start": "Googleサインイン用ブラウザを起動しています...",
+  "auth.login.done": "セッションを安全に保存しました。",
+  "auth.logout.done": "ローカル認証情報を削除しました。"
 };
 
 const dictionaries: Record<LanguageCode, Dict> = { en, ja };

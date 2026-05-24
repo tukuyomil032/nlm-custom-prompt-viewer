@@ -3,12 +3,17 @@ import { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import { NotebookLmSdkAdapter } from "./adapters/notebooklm.js";
 import {
+  clearStoredSession,
+  resolveStoredSession,
+  storeSessionSecurely
+} from "./auth/sessionStore.js";
+import {
   loadConfig,
   resetConfig,
   saveConfig,
   setLanguage
 } from "./config/store.js";
-import type { AppConfig, LanguageCode } from "./config/types.js";
+import { DEFAULT_CONFIG, type AppConfig, type LanguageCode } from "./config/types.js";
 import { t } from "./i18n/messages.js";
 import { formatListRow, PromptExtractorService } from "./services/promptExtractor.js";
 import { savePromptResult, type SaveFormat } from "./services/saveOutput.js";
@@ -97,6 +102,39 @@ async function pickLanguageInteractive(current: LanguageCode): Promise<LanguageC
     return current;
   }
   return answer as LanguageCode;
+}
+
+async function validateStoredSession(): Promise<{
+  status: "valid" | "invalid" | "missing";
+  source: "keychain" | "session_file" | "none";
+  warnings: string[];
+}> {
+  const session = await resolveStoredSession();
+  if (session.cookiesObject === null) {
+    return {
+      status: "missing",
+      source: session.source,
+      warnings: session.warnings
+    };
+  }
+
+  try {
+    const auth = (await import("notebooklm-sdk/auth")) as {
+      connect: (opts?: unknown) => Promise<unknown>;
+    };
+    await auth.connect({ cookiesObject: session.cookiesObject });
+    return {
+      status: "valid",
+      source: session.source,
+      warnings: session.warnings
+    };
+  } catch {
+    return {
+      status: "invalid",
+      source: session.source,
+      warnings: session.warnings
+    };
+  }
 }
 
 function createPromptCommand(): Command {
@@ -240,18 +278,88 @@ function createConfigCommand(): Command {
   config.command("reset").action(async () => {
     const language = await resolveLanguage();
     await resetConfig();
-    await saveConfig({
-      language: "en",
-      updateCheck: {
-        enabled: true,
-        lastCheckedAt: null,
-        latestSeenVersion: null
-      }
-    } satisfies AppConfig);
+    await saveConfig(DEFAULT_CONFIG satisfies AppConfig);
     console.log(t(language, "config.reset"));
   });
 
   return config;
+}
+
+function createAuthCommand(): Command {
+  const auth = new Command("auth");
+  auth.description("Authentication commands");
+
+  auth.command("status").action(async () => {
+    const config = await loadConfig();
+    const language = config.language;
+    const result = await validateStoredSession();
+
+    const nextConfig: AppConfig = {
+      ...config,
+      auth: {
+        lastValidatedAt: new Date().toISOString(),
+        lastSource: result.source,
+        lastStatus: result.status
+      }
+    };
+    await saveConfig(nextConfig);
+
+    if (result.status === "valid") {
+      console.log(
+        t(language, "auth.status.valid", {
+          source: result.source
+        })
+      );
+    } else if (result.status === "missing") {
+      console.log(t(language, "auth.status.missing"));
+    } else {
+      console.log(t(language, "auth.status.invalid"));
+    }
+
+    for (const warning of result.warnings) {
+      console.warn(warning);
+    }
+  });
+
+  auth.command("login").action(async () => {
+    const config = await loadConfig();
+    const language = config.language;
+    console.log(t(language, "auth.login.start"));
+
+    const sdkAuth = (await import("notebooklm-sdk/auth")) as {
+      login: (opts?: unknown) => Promise<{ storageState: unknown }>;
+    };
+    const logged = await sdkAuth.login();
+    await storeSessionSecurely(logged.storageState);
+
+    const status = await validateStoredSession();
+    await saveConfig({
+      ...config,
+      auth: {
+        lastValidatedAt: new Date().toISOString(),
+        lastSource: status.source,
+        lastStatus: status.status
+      }
+    });
+    console.log(t(language, "auth.login.done"));
+  });
+
+  auth.command("logout").action(async () => {
+    const config = await loadConfig();
+    const language = config.language;
+    await clearStoredSession();
+    await saveConfig({
+      ...config,
+      auth: {
+        lastValidatedAt: new Date().toISOString(),
+        lastSource: "none",
+        lastStatus: "missing"
+      }
+    });
+    console.log(t(language, "auth.logout.done"));
+  });
+
+  return auth;
 }
 
 function createUpdateCommand(): Command {
@@ -332,6 +440,7 @@ export function createProgram(): Command {
 
   program.addCommand(createPromptCommand());
   program.addCommand(createConfigCommand());
+  program.addCommand(createAuthCommand());
   program.addCommand(createUpdateCommand());
   return program;
 }

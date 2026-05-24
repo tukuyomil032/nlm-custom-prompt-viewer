@@ -9,6 +9,11 @@ export interface UpdateCheckConfig {
 export interface AppConfig {
   language: LanguageCode;
   updateCheck: UpdateCheckConfig;
+  auth: {
+    lastValidatedAt: string | null;
+    lastSource: "keychain" | "session_file" | "none" | null;
+    lastStatus: "valid" | "invalid" | "missing" | null;
+  };
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -17,5 +22,10 @@ export const DEFAULT_CONFIG: AppConfig = {
     enabled: true,
     lastCheckedAt: null,
     latestSeenVersion: null
+  },
+  auth: {
+    lastValidatedAt: null,
+    lastSource: null,
+    lastStatus: null
   }
 };
