@@ -10,6 +10,7 @@ function makeArtifact(
     title: overrides.title ?? "title",
     type: overrides.type,
     rawType: overrides.rawType ?? overrides.type,
+    createdAt: overrides.createdAt ?? null,
     raw: overrides.raw ?? {},
   };
 }
@@ -22,6 +23,10 @@ class MockAdapter implements NotebookLmAdapter {
 
   public async listArtifacts(): Promise<ArtifactRecord[]> {
     return this.artifacts;
+  }
+
+  public async listNotebooks(): Promise<never[]> {
+    return [];
   }
 
   public async askNotebookForPrompt(
@@ -82,5 +87,27 @@ describe("PromptExtractorService", () => {
 
     const allSupported = await service.listPrompts("nb1");
     expect(allSupported).toHaveLength(2);
+  });
+
+  it("listPromptsDetailed returns successes and failed extraction summary", async () => {
+    const adapter = new MockAdapter(
+      [
+        makeArtifact({ id: "s1", type: "slides", raw: { custom_prompt: "A" } }),
+        makeArtifact({ id: "v1", type: "video", raw: { prompt: "B" } }),
+        makeArtifact({ id: "a1", type: "audio", raw: { status: "ready" } }),
+      ],
+      {
+        a1: null,
+      },
+    );
+    const service = new PromptExtractorService(adapter);
+
+    const detailed = await service.listPromptsDetailed("nb1");
+    expect(detailed.results).toHaveLength(2);
+    expect(detailed.failures).toHaveLength(1);
+    expect(detailed.failures[0]).toMatchObject({
+      artifactId: "a1",
+      reason: "extraction_failed",
+    });
   });
 });

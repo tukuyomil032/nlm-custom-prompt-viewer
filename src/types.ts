@@ -25,6 +25,14 @@ export interface ArtifactRecord {
   title: string;
   type: SupportedArtifactType | "unsupported";
   rawType: string;
+  createdAt: string | null;
+  raw: unknown;
+}
+
+export interface NotebookRecord {
+  id: string;
+  title: string;
+  createdAt: string | null;
   raw: unknown;
 }
 
@@ -34,6 +42,7 @@ export interface ListPromptOptions {
 }
 
 export interface NotebookLmAdapter {
+  listNotebooks(): Promise<NotebookRecord[]>;
   listArtifacts(notebookId: string): Promise<ArtifactRecord[]>;
   askNotebookForPrompt(
     notebookId: string,

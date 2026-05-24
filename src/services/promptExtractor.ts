@@ -66,6 +66,18 @@ function pickBestPrompt(candidates: string[]): string | null {
   return normalizePromptText(sorted[0]);
 }
 
+export interface PromptListFailure {
+  artifactId: string;
+  artifactTitle: string;
+  artifactType: string;
+  reason: "unsupported_type" | "extraction_failed";
+}
+
+export interface PromptListDetailedResult {
+  results: PromptResult[];
+  failures: PromptListFailure[];
+}
+
 export function summarizePromptText(text: string): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
   if (oneLine.length <= 120) return oneLine;
@@ -79,15 +91,43 @@ export class PromptExtractorService {
     notebookId: string,
     options: ListPromptOptions = {},
   ): Promise<PromptResult[]> {
+    const detailed = await this.listPromptsDetailed(notebookId, options);
+    return detailed.results;
+  }
+
+  public async listPromptsDetailed(
+    notebookId: string,
+    options: ListPromptOptions = {},
+  ): Promise<PromptListDetailedResult> {
     const artifacts = await this.adapter.listArtifacts(notebookId);
-    const filtered = this.filterArtifacts(artifacts, options.type, options.limit);
+    const { targets, skippedUnsupported } = this.partitionArtifacts(
+      artifacts,
+      options.type,
+      options.limit,
+    );
 
     const results: PromptResult[] = [];
-    for (const artifact of filtered) {
+    const failures: PromptListFailure[] = skippedUnsupported.map((artifact) => ({
+      artifactId: artifact.id,
+      artifactTitle: artifact.title,
+      artifactType: artifact.rawType,
+      reason: "unsupported_type",
+    }));
+
+    for (const artifact of targets) {
       const extracted = await this.extractForArtifact(notebookId, artifact);
-      if (extracted) results.push(extracted);
+      if (extracted) {
+        results.push(extracted);
+      } else {
+        failures.push({
+          artifactId: artifact.id,
+          artifactTitle: artifact.title,
+          artifactType: artifact.rawType,
+          reason: "extraction_failed",
+        });
+      }
     }
-    return results;
+    return { results, failures };
   }
 
   public async getPrompt(notebookId: string, artifactId: string): Promise<PromptResult> {
@@ -109,14 +149,23 @@ export class PromptExtractorService {
     return result;
   }
 
-  private filterArtifacts(
+  private partitionArtifacts(
     artifacts: ArtifactRecord[],
     type?: SupportedArtifactType,
     limit?: number,
-  ): ArtifactRecord[] {
+  ): {
+    targets: ArtifactRecord[];
+    skippedUnsupported: ArtifactRecord[];
+  } {
     const onlySupported = artifacts.filter((item) => isSupportedType(item.type));
     const byType = type ? onlySupported.filter((item) => item.type === type) : onlySupported;
-    return typeof limit === "number" && limit > 0 ? byType.slice(0, limit) : byType;
+    const limited = typeof limit === "number" && limit > 0 ? byType.slice(0, limit) : byType;
+    const skippedUnsupported =
+      type === undefined ? artifacts.filter((item) => !isSupportedType(item.type)) : [];
+    return {
+      targets: limited,
+      skippedUnsupported,
+    };
   }
 
   private async extractForArtifact(

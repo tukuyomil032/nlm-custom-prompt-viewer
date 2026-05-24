@@ -1,4 +1,9 @@
-import type { ArtifactRecord, NotebookLmAdapter, SupportedArtifactType } from "../types.js";
+import type {
+  ArtifactRecord,
+  NotebookLmAdapter,
+  NotebookRecord,
+  SupportedArtifactType,
+} from "../types.js";
 import { resolveStoredSession } from "../auth/sessionStore.js";
 
 type UnknownRecord = Record<string, unknown>;
@@ -35,6 +40,11 @@ function normalizeType(rawType: string): SupportedArtifactType | "unsupported" {
   return TYPE_ALIASES[lower] ?? "unsupported";
 }
 
+function getDateString(obj: UnknownRecord, ...keys: string[]): string | null {
+  const value = getString(obj, ...keys);
+  return value ?? null;
+}
+
 function ensureAuthFriendlyError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (/(401|403|csrf|auth|cookie|session|login|unauth)/i.test(message)) {
@@ -43,6 +53,11 @@ function ensureAuthFriendlyError(error: unknown): never {
     );
   }
   throw error instanceof Error ? error : new Error(message);
+}
+
+function getErrorSummary(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n")[0]?.trim() || "unknown error";
 }
 
 async function createClientFromSdk(): Promise<unknown> {
@@ -87,7 +102,7 @@ function toArtifactRecord(item: unknown): ArtifactRecord | null {
 
   const id = getString(item, "id", "artifactId", "artifact_id");
   const title = getString(item, "title", "name") ?? "Untitled Artifact";
-  const rawType = getString(item, "type", "artifactType", "artifact_type") ?? "unknown";
+  const rawType = getString(item, "type", "kind", "artifactType", "artifact_type") ?? "unknown";
 
   if (!id) return null;
 
@@ -96,6 +111,22 @@ function toArtifactRecord(item: unknown): ArtifactRecord | null {
     title,
     rawType,
     type: normalizeType(rawType),
+    createdAt: getDateString(item, "createdAt", "created_at", "created", "timestamp"),
+    raw: item,
+  };
+}
+
+function toNotebookRecord(item: unknown): NotebookRecord | null {
+  if (!isRecord(item)) return null;
+
+  const id = getString(item, "id", "notebookId", "notebook_id");
+  const title = getString(item, "title", "name") ?? "Untitled Notebook";
+  if (!id) return null;
+
+  return {
+    id,
+    title,
+    createdAt: getDateString(item, "createdAt", "created_at", "created", "timestamp"),
     raw: item,
   };
 }
@@ -105,6 +136,24 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
 
   public constructor(client?: unknown) {
     this.clientPromise = client ? Promise.resolve(client) : createClientFromSdk();
+  }
+
+  public async listNotebooks(): Promise<NotebookRecord[]> {
+    try {
+      const client = (await this.clientPromise) as UnknownRecord;
+      const payload = await this.fetchNotebooksPayload(client);
+      const items = pickFirstArray(payload, [
+        (root) => (isRecord(root) ? root.notebooks : undefined),
+        (root) => (isRecord(root) ? root.items : undefined),
+        (root) => (isRecord(root) ? root.data : undefined),
+        (root) => root,
+      ]);
+      return items
+        .map(toNotebookRecord)
+        .filter((record): record is NotebookRecord => record !== null);
+    } catch (error) {
+      ensureAuthFriendlyError(error);
+    }
   }
 
   public async listArtifacts(notebookId: string): Promise<ArtifactRecord[]> {
@@ -147,28 +196,79 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
   }
 
   private async fetchArtifactsPayload(client: UnknownRecord, notebookId: string): Promise<unknown> {
-    const candidates: Array<() => Promise<unknown>> = [];
+    const candidates: Array<{ name: string; run: () => Promise<unknown> }> = [];
 
     if (isRecord(client.studio) && typeof client.studio.status === "function") {
-      const statusFn = (client.studio as { status: (id: string) => Promise<unknown> }).status;
-      candidates.push(() => statusFn(notebookId));
+      candidates.push({
+        name: "studio.status",
+        run: () =>
+          (client.studio as { status: (id: string) => Promise<unknown> }).status(notebookId),
+      });
     }
     if (typeof client.studioStatus === "function") {
-      candidates.push(() => (client.studioStatus as (id: string) => Promise<unknown>)(notebookId));
+      candidates.push({
+        name: "studioStatus",
+        run: () => (client.studioStatus as (id: string) => Promise<unknown>)(notebookId),
+      });
     }
     if (isRecord(client.artifacts) && typeof client.artifacts.list === "function") {
-      const listFn = (client.artifacts as { list: (id: string) => Promise<unknown> }).list;
-      candidates.push(() => listFn(notebookId));
+      candidates.push({
+        name: "artifacts.list",
+        run: () =>
+          (client.artifacts as { list: (id: string) => Promise<unknown> }).list(notebookId),
+      });
     }
 
-    for (const run of candidates) {
+    const failures: string[] = [];
+    for (const candidate of candidates) {
       try {
-        return await run();
-      } catch {
+        return await candidate.run();
+      } catch (error) {
+        failures.push(`${candidate.name}: ${getErrorSummary(error)}`);
         continue;
       }
     }
-    throw new Error("Could not call artifact listing APIs. SDK method names may have changed.");
+    const detail = failures.length > 0 ? ` Tried: ${failures.join(" | ")}` : "";
+    throw new Error(
+      `Could not call artifact listing APIs. SDK method names may have changed.${detail}`,
+    );
+  }
+
+  private async fetchNotebooksPayload(client: UnknownRecord): Promise<unknown> {
+    const candidates: Array<{ name: string; run: () => Promise<unknown> }> = [];
+
+    if (isRecord(client.notebooks) && typeof client.notebooks.list === "function") {
+      candidates.push({
+        name: "notebooks.list",
+        run: () => (client.notebooks as { list: () => Promise<unknown> }).list(),
+      });
+    }
+    if (typeof client.listNotebooks === "function") {
+      candidates.push({
+        name: "listNotebooks",
+        run: () => (client.listNotebooks as () => Promise<unknown>)(),
+      });
+    }
+    if (typeof client.list === "function") {
+      candidates.push({
+        name: "list",
+        run: () => (client.list as () => Promise<unknown>)(),
+      });
+    }
+
+    const failures: string[] = [];
+    for (const candidate of candidates) {
+      try {
+        return await candidate.run();
+      } catch (error) {
+        failures.push(`${candidate.name}: ${getErrorSummary(error)}`);
+        continue;
+      }
+    }
+    const detail = failures.length > 0 ? ` Tried: ${failures.join(" | ")}` : "";
+    throw new Error(
+      `Could not call notebook listing APIs. SDK method names may have changed.${detail}`,
+    );
   }
 
   private async queryNotebook(
@@ -179,12 +279,13 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
     const candidates: Array<() => Promise<unknown>> = [];
 
     if (isRecord(client.notebooks) && typeof client.notebooks.query === "function") {
-      const queryFn = (
-        client.notebooks as {
-          query: (id: string, question: string) => Promise<unknown>;
-        }
-      ).query;
-      candidates.push(() => queryFn(notebookId, question));
+      candidates.push(() =>
+        (
+          client.notebooks as {
+            query: (id: string, question: string) => Promise<unknown>;
+          }
+        ).query(notebookId, question),
+      );
     }
     if (typeof client.query === "function") {
       candidates.push(() =>
@@ -197,6 +298,15 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
           notebookId,
           question,
         }),
+      );
+    }
+    if (isRecord(client.chat) && typeof client.chat.ask === "function") {
+      candidates.push(() =>
+        (
+          client.chat as {
+            ask: (id: string, question: string, opts?: unknown) => Promise<unknown>;
+          }
+        ).ask(notebookId, question),
       );
     }
 
