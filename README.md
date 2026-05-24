@@ -1,3 +1,5 @@
+<div align="center">
+
 # nlm-custom-prompt-viewer
 
 Recover and reuse custom prompts used by NotebookLM Studio artifacts from the command line.
@@ -5,6 +7,10 @@ Recover and reuse custom prompts used by NotebookLM Studio artifacts from the co
 [![npm version](https://img.shields.io/npm/v/nlm-custom-prompt-viewer?style=flat-square)](https://www.npmjs.com/package/nlm-custom-prompt-viewer)
 ![Bun](https://img.shields.io/badge/Bun-1.x-black?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.x-blue?style=flat-square)
+
+![Demo](assets/demo.gif)
+
+</div>
 
 > [!IMPORTANT]
 > This project depends on `notebooklm-sdk` (unofficial reverse-engineered API behavior).  
