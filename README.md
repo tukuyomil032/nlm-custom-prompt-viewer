@@ -109,8 +109,15 @@ automatically — `--infer` is not required for single-artifact retrieval.
   - table output by default
   - machine-readable with `--json`
 - `prompt get --save` default paths:
-  - `./outputs/<notebookId>/<artifactId>.json`
-  - `./outputs/<notebookId>/<artifactId>.md`
+  - `./outputs/<slug>.json`
+  - `./outputs/<slug>.md`
+  - `<slug>` = `slugify(artifactTitle)` (lowercase + hyphens); falls back to `artifactId`
+  - Example: "My AI Podcast" → `./outputs/my-ai-podcast.json`
+- `--out <path>` behavior:
+  - **Directory** (no `.json`/`.md` extension): saves `<path>/<slug>.<format>` for each format
+  - **File** (`.json` or `.md` extension) + `--format <fmt>`: saves directly to `<path>`
+  - Tilde expansion is supported (`~/docs` → `$HOME/docs`)
+- `--format json|md` limits output to one format (default: both)
 - Config file: `~/.config/nlm-prompt/config.json`
   (override: `$XDG_CONFIG_HOME/nlm-prompt/config.json`)
 - Session file: `~/.notebooklm/session.json`
