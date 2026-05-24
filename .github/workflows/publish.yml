@@ -23,7 +23,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run CI pipeline
-        run: just ci
+        run: bun run ci
 
       - name: Run lint
         run: bun run lint
@@ -62,4 +62,4 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish package
-        run: npm publish --access public
+        run: npm publish
