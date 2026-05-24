@@ -1,6 +1,6 @@
 {
   "name": "nlm-custom-prompt-viewer",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "CLI to recover Studio custom prompts from NotebookLM artifacts",
   "keywords": [
     "AI",
@@ -25,7 +25,7 @@
     "url": "git+https://github.com/tukuyomil032/nlm-custom-prompt-viewer.git"
   },
   "bin": {
-    "nlm": "./dist/index.js",
+    "nlmv": "./dist/index.js",
     "nlm-prompt": "./dist/index.js"
   },
   "files": [
@@ -55,6 +55,7 @@
     "gradient-string": "^3.0.0",
     "lefthook": "^2.1.8",
     "notebooklm-sdk": "^0.2.0",
+    "playwright": "^1.60.0",
     "string-width": "^8.2.1"
   },
   "devDependencies": {
