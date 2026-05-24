@@ -7,7 +7,7 @@ import {
   resetConfig,
   resolveConfigPath,
   saveConfig,
-  setLanguage
+  setLanguage,
 } from "../src/config/store.js";
 import { DEFAULT_CONFIG } from "../src/config/types.js";
 

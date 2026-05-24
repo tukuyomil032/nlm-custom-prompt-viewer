@@ -2,37 +2,52 @@
   "name": "nlm-custom-prompt-viewer",
   "version": "0.1.0",
   "description": "CLI to recover Studio custom prompts from NotebookLM artifacts",
-  "type": "module",
+  "keywords": [
+    "AI",
+    "LLM",
+    "cli",
+    "custom-prompt",
+    "google",
+    "language-model",
+    "notebooklm",
+    "prompt",
+    "typescript"
+  ],
+  "homepage": "https://github.com/tukuyomil032/nlm-custom-prompt-viewer#readme",
+  "bugs": {
+    "url": "git+https://github.com/tukuyomil032/nlm-custom-prompt-viewer.git/issues",
+    "type": "git"
+  },
+  "license": "MIT",
+  "author": "tukuyomil032",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tukuyomil032/nlm-custom-prompt-viewer.git"
+  },
   "bin": {
-    "nlm-prompt": "./dist/index.js",
-    "nlm": "./dist/index.js"
+    "nlm": "./dist/index.js",
+    "nlm-prompt": "./dist/index.js"
   },
   "files": [
     "README.md",
     "dist"
   ],
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "fmt": "oxfmt --check",
-    "fmt:fix": "oxfmt .",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
-  "keywords": [
-    "notebooklm",
-    "cli",
-    "prompt",
-    "typescript",
-    "custom-prompt",
-    "google",
-    "AI",
-    "LLM",
-    "language-model"
-  ],
-  "license": "MIT",
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "dev": "bun --watch src/index.ts",
+    "test": "bunx vitest run",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "fmt": "oxfmt --check src tests",
+    "fmt:fix": "oxfmt src tests",
+    "lint": "oxlint src tests",
+    "lint:fix": "oxlint --fix",
+    "ci": "bun run typecheck && bun run test && bun run build"
+  },
   "dependencies": {
     "@clack/prompts": "^1.4.0",
     "chalk": "^5.6.2",
@@ -41,9 +56,6 @@
     "lefthook": "^2.1.8",
     "notebooklm-sdk": "^0.2.0",
     "string-width": "^8.2.1"
-  },
-  "optionalDependencies": {
-    "keytar": "^7.9.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -54,18 +66,7 @@
     "typescript": "^6.0.3",
     "vitest": "^2.1.8"
   },
-  "author": "tukuyomil032",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tukuyomil032/nlm-custom-prompt-viewer.git"
-  },
-  "bugs": {
-    "type": "git",
-    "url": "git+https://github.com/tukuyomil032/nlm-custom-prompt-viewer.git/issues"
-  },
-  "homepage": "https://github.com/tukuyomil032/nlm-custom-prompt-viewer#readme",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
+  "optionalDependencies": {
+    "keytar": "^7.9.0"
   }
 }

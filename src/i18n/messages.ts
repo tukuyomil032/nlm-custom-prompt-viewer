@@ -24,20 +24,18 @@ const en: Dict = {
   "config.language.prompt": "Choose display language",
   "config.language.changed": "Language changed to {value}.",
   "config.key.unknown": "Unknown config key: {key}. Supported keys: language",
-  "config.value.invalidLanguage": "Invalid language: {value}. Use en or ja."
-  ,
+  "config.value.invalidLanguage": "Invalid language: {value}. Use en or ja.",
   "update.description": "Check package update status.",
   "update.latest": "You are using the latest version ({current}).",
   "update.available": "Update available: {current} -> {latest}. Run `bun add -g {pkg}`.",
-  "update.unreachable": "Could not reach npm registry. Skipping update check."
-  ,
+  "update.unreachable": "Could not reach npm registry. Skipping update check.",
   "auth.description": "Authentication commands.",
   "auth.status.valid": "Authentication status: valid ({source}).",
   "auth.status.missing": "Authentication status: missing. Run `nlm auth login`.",
   "auth.status.invalid": "Authentication status: invalid or expired.",
   "auth.login.start": "Opening browser for Google sign-in...",
   "auth.login.done": "Session saved securely.",
-  "auth.logout.done": "Local authentication data has been cleared."
+  "auth.logout.done": "Local authentication data has been cleared.",
 };
 
 const ja: Dict = {
@@ -62,20 +60,19 @@ const ja: Dict = {
   "config.language.prompt": "表示言語を選択してください",
   "config.language.changed": "表示言語を {value} に変更しました。",
   "config.key.unknown": "不明な設定キーです: {key}。対応キー: language",
-  "config.value.invalidLanguage": "不正な言語です: {value}。en または ja を指定してください。"
-  ,
+  "config.value.invalidLanguage": "不正な言語です: {value}。en または ja を指定してください。",
   "update.description": "パッケージの更新状況を確認します。",
   "update.latest": "最新バージョンを利用中です（{current}）。",
-  "update.available": "更新があります: {current} -> {latest}。`bun add -g {pkg}` を実行してください。",
-  "update.unreachable": "npmレジストリに接続できなかったため、更新確認をスキップしました。"
-  ,
+  "update.available":
+    "更新があります: {current} -> {latest}。`bun add -g {pkg}` を実行してください。",
+  "update.unreachable": "npmレジストリに接続できなかったため、更新確認をスキップしました。",
   "auth.description": "認証関連コマンドです。",
   "auth.status.valid": "認証状態: 有効（{source}）。",
   "auth.status.missing": "認証状態: 未設定です。`nlm auth login` を実行してください。",
   "auth.status.invalid": "認証状態: 無効または期限切れです。",
   "auth.login.start": "Googleサインイン用ブラウザを起動しています...",
   "auth.login.done": "セッションを安全に保存しました。",
-  "auth.logout.done": "ローカル認証情報を削除しました。"
+  "auth.logout.done": "ローカル認証情報を削除しました。",
 };
 
 const dictionaries: Record<LanguageCode, Dict> = { en, ja };
@@ -86,15 +83,11 @@ function format(template: string, vars?: Record<string, string>): string {
   if (!vars) return template;
   return Object.entries(vars).reduce(
     (acc, [key, value]) => acc.replaceAll(`{${key}}`, value),
-    template
+    template,
   );
 }
 
-export function t(
-  language: LanguageCode,
-  key: MessageKey,
-  vars?: Record<string, string>
-): string {
+export function t(language: LanguageCode, key: MessageKey, vars?: Record<string, string>): string {
   const dict = dictionaries[language] ?? dictionaries.en;
   const template = dict[key] ?? dictionaries.en[key] ?? key;
   return format(template, vars);

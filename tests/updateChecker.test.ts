@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  checkForUpdates,
-  isNewerVersion,
-  shouldSkipCachedCheck
-} from "../src/update/checker.js";
+import { checkForUpdates, isNewerVersion, shouldSkipCachedCheck } from "../src/update/checker.js";
 import { DEFAULT_CONFIG } from "../src/config/types.js";
 
 describe("update checker", () => {
@@ -21,7 +17,7 @@ describe("update checker", () => {
   it("checks and persists latest version", async () => {
     const response = {
       ok: true,
-      json: async () => ({ version: "0.2.0" })
+      json: async () => ({ version: "0.2.0" }),
     } as Response;
 
     const result = await checkForUpdates({
@@ -29,7 +25,7 @@ describe("update checker", () => {
       currentVersion: "0.1.0",
       config: DEFAULT_CONFIG,
       force: true,
-      fetcher: async () => response
+      fetcher: async () => response,
     });
 
     expect(result.checked).toBe(true);

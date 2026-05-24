@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   clearStoredSession,
   resolveStoredSession,
-  storeSessionSecurely
+  storeSessionSecurely,
 } from "../src/auth/sessionStore.js";
 
 const storageState = {
@@ -13,9 +13,9 @@ const storageState = {
     {
       name: "SID",
       value: "dummy",
-      domain: ".google.com"
-    }
-  ]
+      domain: ".google.com",
+    },
+  ],
 };
 
 describe("session store", () => {

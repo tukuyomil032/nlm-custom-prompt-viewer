@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  commands:
+    oxlint:
+      glob: "src/**/*.ts"
+      run: bun lint
+    oxfmt:
+      glob: "src/**/*.ts"
+      run: bun fmt

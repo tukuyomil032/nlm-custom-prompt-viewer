@@ -32,19 +32,13 @@ function normalizeConfig(input: unknown): AppConfig {
     language: toLanguage(input.language),
     updateCheck: {
       enabled:
-        typeof update.enabled === "boolean"
-          ? update.enabled
-          : DEFAULT_CONFIG.updateCheck.enabled,
-      lastCheckedAt:
-        typeof update.lastCheckedAt === "string" ? update.lastCheckedAt : null,
+        typeof update.enabled === "boolean" ? update.enabled : DEFAULT_CONFIG.updateCheck.enabled,
+      lastCheckedAt: typeof update.lastCheckedAt === "string" ? update.lastCheckedAt : null,
       latestSeenVersion:
-        typeof update.latestSeenVersion === "string"
-          ? update.latestSeenVersion
-          : null
+        typeof update.latestSeenVersion === "string" ? update.latestSeenVersion : null,
     },
     auth: {
-      lastValidatedAt:
-        typeof auth.lastValidatedAt === "string" ? auth.lastValidatedAt : null,
+      lastValidatedAt: typeof auth.lastValidatedAt === "string" ? auth.lastValidatedAt : null,
       lastSource:
         auth.lastSource === "keychain" ||
         auth.lastSource === "session_file" ||
@@ -56,8 +50,8 @@ function normalizeConfig(input: unknown): AppConfig {
         auth.lastStatus === "invalid" ||
         auth.lastStatus === "missing"
           ? auth.lastStatus
-          : null
-    }
+          : null,
+    },
   };
 }
 
@@ -86,7 +80,7 @@ export async function setLanguage(language: LanguageCode): Promise<AppConfig> {
   const current = await loadConfig();
   const next: AppConfig = {
     ...current,
-    language
+    language,
   };
   await saveConfig(next);
   return next;

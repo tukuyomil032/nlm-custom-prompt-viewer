@@ -13,17 +13,14 @@ const TYPE_ALIASES: Record<string, SupportedArtifactType> = {
   audio_overview: "audio",
   podcast: "audio",
   quiz: "quiz",
-  flashcards: "flashcards"
+  flashcards: "flashcards",
 };
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
 }
 
-function getString(
-  obj: UnknownRecord,
-  ...keys: string[]
-): string | undefined {
+function getString(obj: UnknownRecord, ...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = obj[key];
     if (typeof value === "string" && value.trim().length > 0) {
@@ -42,7 +39,7 @@ function ensureAuthFriendlyError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (/(401|403|csrf|auth|cookie|session|login|unauth)/i.test(message)) {
     throw new Error(
-      "NotebookLMの認証状態を確認してください。ブラウザの既存セッションを更新後、再実行してください（例: `nlm login` または NotebookLM に再ログイン）。"
+      "Authentication failed. Refresh your NotebookLM browser session and retry (`nlm auth login` or re-login in NotebookLM).",
     );
   }
   throw error instanceof Error ? error : new Error(message);
@@ -71,14 +68,11 @@ async function createClientFromSdk(): Promise<unknown> {
   }
 
   throw new Error(
-    "notebooklm-sdk のクライアント初期化に失敗しました。SDKバージョンと認証方式を確認してください。"
+    "Failed to initialize notebooklm-sdk client. Check SDK version and authentication setup.",
   );
 }
 
-function pickFirstArray(
-  payload: unknown,
-  paths: Array<(root: unknown) => unknown>
-): unknown[] {
+function pickFirstArray(payload: unknown, paths: Array<(root: unknown) => unknown>): unknown[] {
   for (const path of paths) {
     const value = path(payload);
     if (Array.isArray(value)) {
@@ -102,7 +96,7 @@ function toArtifactRecord(item: unknown): ArtifactRecord | null {
     title,
     rawType,
     type: normalizeType(rawType),
-    raw: item
+    raw: item,
   };
 }
 
@@ -121,7 +115,7 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
         (root) => (isRecord(root) ? root.artifacts : undefined),
         (root) => (isRecord(root) && isRecord(root.studio) ? root.studio.artifacts : undefined),
         (root) => (isRecord(root) ? root.items : undefined),
-        (root) => root
+        (root) => root,
       ]);
       return items
         .map(toArtifactRecord)
@@ -133,7 +127,7 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
 
   public async askNotebookForPrompt(
     notebookId: string,
-    artifact: Pick<ArtifactRecord, "id" | "title" | "rawType">
+    artifact: Pick<ArtifactRecord, "id" | "title" | "rawType">,
   ): Promise<string | null> {
     const question =
       "次のNotebookLM Studio成果物について、生成時に使われたカスタム指示文だけをそのまま返してください。該当が不明なら `UNKNOWN` のみ返してください。\n" +
@@ -152,10 +146,7 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
     }
   }
 
-  private async fetchArtifactsPayload(
-    client: UnknownRecord,
-    notebookId: string
-  ): Promise<unknown> {
+  private async fetchArtifactsPayload(client: UnknownRecord, notebookId: string): Promise<unknown> {
     const candidates: Array<() => Promise<unknown>> = [];
 
     if (isRecord(client.studio) && typeof client.studio.status === "function") {
@@ -177,33 +168,35 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
         continue;
       }
     }
-    throw new Error("Artifacts一覧APIを呼び出せませんでした。SDKの公開メソッド名が変更されている可能性があります。");
+    throw new Error("Could not call artifact listing APIs. SDK method names may have changed.");
   }
 
   private async queryNotebook(
     client: UnknownRecord,
     notebookId: string,
-    question: string
+    question: string,
   ): Promise<string | null> {
     const candidates: Array<() => Promise<unknown>> = [];
 
     if (isRecord(client.notebooks) && typeof client.notebooks.query === "function") {
-      const queryFn = (client.notebooks as {
-        query: (id: string, question: string) => Promise<unknown>;
-      }).query;
-      candidates.push(() =>
-        queryFn(notebookId, question)
-      );
+      const queryFn = (
+        client.notebooks as {
+          query: (id: string, question: string) => Promise<unknown>;
+        }
+      ).query;
+      candidates.push(() => queryFn(notebookId, question));
     }
     if (typeof client.query === "function") {
-      candidates.push(() => (client.query as (id: string, q: string) => Promise<unknown>)(notebookId, question));
+      candidates.push(() =>
+        (client.query as (id: string, q: string) => Promise<unknown>)(notebookId, question),
+      );
     }
     if (typeof client.ask === "function") {
       candidates.push(() =>
         (client.ask as (input: { notebookId: string; question: string }) => Promise<unknown>)({
           notebookId,
-          question
-        })
+          question,
+        }),
       );
     }
 

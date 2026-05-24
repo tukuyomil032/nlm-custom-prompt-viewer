@@ -83,7 +83,7 @@ export async function resolveStoredSession(): Promise<SessionResolution> {
           return {
             cookiesObject: parsed,
             source: "keychain",
-            warnings
+            warnings,
           };
         }
       }
@@ -100,14 +100,14 @@ export async function resolveStoredSession(): Promise<SessionResolution> {
     return {
       cookiesObject: fileState,
       source: "session_file",
-      warnings
+      warnings,
     };
   }
 
   return {
     cookiesObject: null,
     source: "none",
-    warnings
+    warnings,
   };
 }
 
@@ -122,12 +122,12 @@ export async function storeSessionSecurely(storageState: unknown): Promise<{
   let storedInKeychain = false;
   const keytar = await loadKeytar();
   if (keytar) {
-    await keytar.setPassword(
-      KEYCHAIN_SERVICE,
-      KEYCHAIN_ACCOUNT,
-      JSON.stringify(storageState)
-    );
-    storedInKeychain = true;
+    try {
+      await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, JSON.stringify(storageState));
+      storedInKeychain = true;
+    } catch {
+      storedInKeychain = false;
+    }
   }
 
   const target = sessionFilePath();
@@ -137,7 +137,7 @@ export async function storeSessionSecurely(storageState: unknown): Promise<{
 
   return {
     storedInKeychain,
-    wroteFallbackFile: true
+    wroteFallbackFile: true,
   };
 }
 

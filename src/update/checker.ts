@@ -40,14 +40,14 @@ export function shouldSkipCachedCheck(lastCheckedAt: string | null): boolean {
 
 export async function fetchLatestVersion(
   packageName: string,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
 ): Promise<string | null> {
   try {
     const url = `https://registry.npmjs.org/${encodeURIComponent(packageName)}/latest`;
     const response = await fetcher(url, {
       headers: {
-        accept: "application/json"
-      }
+        accept: "application/json",
+      },
     });
     if (!response.ok) return null;
     const payload = (await response.json()) as { version?: unknown };
@@ -70,7 +70,7 @@ export async function checkForUpdates(params: {
       checked: false,
       latestVersion: config.updateCheck.latestSeenVersion,
       hasUpdate: false,
-      nextConfig: config
+      nextConfig: config,
     };
   }
 
@@ -81,7 +81,7 @@ export async function checkForUpdates(params: {
       hasUpdate:
         config.updateCheck.latestSeenVersion !== null &&
         isNewerVersion(currentVersion, config.updateCheck.latestSeenVersion),
-      nextConfig: config
+      nextConfig: config,
     };
   }
 
@@ -92,8 +92,8 @@ export async function checkForUpdates(params: {
     updateCheck: {
       ...config.updateCheck,
       lastCheckedAt: now,
-      latestSeenVersion: latestVersion
-    }
+      latestSeenVersion: latestVersion,
+    },
   };
 
   if (!latestVersion) {
@@ -101,7 +101,7 @@ export async function checkForUpdates(params: {
       checked: true,
       latestVersion: null,
       hasUpdate: false,
-      nextConfig
+      nextConfig,
     };
   }
 
@@ -109,6 +109,6 @@ export async function checkForUpdates(params: {
     checked: true,
     latestVersion,
     hasUpdate: isNewerVersion(currentVersion, latestVersion),
-    nextConfig
+    nextConfig,
   };
 }

@@ -21,11 +21,11 @@ export const DEFAULT_CONFIG: AppConfig = {
   updateCheck: {
     enabled: true,
     lastCheckedAt: null,
-    latestSeenVersion: null
+    latestSeenVersion: null,
   },
   auth: {
     lastValidatedAt: null,
     lastSource: null,
-    lastStatus: null
-  }
+    lastStatus: null,
+  },
 };

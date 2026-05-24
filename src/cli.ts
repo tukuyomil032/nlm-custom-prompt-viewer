@@ -1,26 +1,21 @@
 import { cancel, isCancel, select } from "@clack/prompts";
+import chalk from "chalk";
 import { Command } from "commander";
+import gradient from "gradient-string";
 import { readFile } from "node:fs/promises";
+import stringWidth from "string-width";
 import { NotebookLmSdkAdapter } from "./adapters/notebooklm.js";
 import {
   clearStoredSession,
   resolveStoredSession,
-  storeSessionSecurely
+  storeSessionSecurely,
 } from "./auth/sessionStore.js";
-import {
-  loadConfig,
-  resetConfig,
-  saveConfig,
-  setLanguage
-} from "./config/store.js";
+import { loadConfig, resetConfig, saveConfig, setLanguage } from "./config/store.js";
 import { DEFAULT_CONFIG, type AppConfig, type LanguageCode } from "./config/types.js";
 import { t } from "./i18n/messages.js";
-import { formatListRow, PromptExtractorService } from "./services/promptExtractor.js";
+import { PromptExtractorService, summarizePromptText } from "./services/promptExtractor.js";
 import { savePromptResult, type SaveFormat } from "./services/saveOutput.js";
-import {
-  SUPPORTED_ARTIFACT_TYPES,
-  type SupportedArtifactType
-} from "./types.js";
+import { SUPPORTED_ARTIFACT_TYPES, type SupportedArtifactType } from "./types.js";
 import { checkForUpdates } from "./update/checker.js";
 
 interface ListCommandOptions {
@@ -46,7 +41,7 @@ async function loadPackageMeta(): Promise<PackageMeta> {
   const payload = JSON.parse(raw) as { name?: unknown; version?: unknown };
   return {
     name: typeof payload.name === "string" ? payload.name : "nlm-custom-prompt-viewer",
-    version: typeof payload.version === "string" ? payload.version : "0.0.0"
+    version: typeof payload.version === "string" ? payload.version : "0.0.0",
   };
 }
 
@@ -55,10 +50,7 @@ async function resolveLanguage(): Promise<LanguageCode> {
   return config.language;
 }
 
-function parseType(
-  language: LanguageCode,
-  input?: string
-): SupportedArtifactType | undefined {
+function parseType(language: LanguageCode, input?: string): SupportedArtifactType | undefined {
   if (!input) return undefined;
   if ((SUPPORTED_ARTIFACT_TYPES as readonly string[]).includes(input)) {
     return input as SupportedArtifactType;
@@ -66,8 +58,8 @@ function parseType(
   throw new Error(
     t(language, "errors.unsupportedType", {
       value: input,
-      supported: SUPPORTED_ARTIFACT_TYPES.join(", ")
-    })
+      supported: SUPPORTED_ARTIFACT_TYPES.join(", "),
+    }),
   );
 }
 
@@ -86,14 +78,66 @@ function parseLimit(language: LanguageCode, value?: string): number | undefined 
   return Math.floor(parsed);
 }
 
+function padCell(value: string, width: number): string {
+  const gap = Math.max(0, width - stringWidth(value));
+  return `${value}${" ".repeat(gap)}`;
+}
+
+function printPromptTable(
+  language: LanguageCode,
+  rows: Array<{
+    artifactId: string;
+    artifactType: string;
+    method: string;
+    prompt: string;
+  }>,
+): void {
+  const headers = [
+    t(language, "prompt.field.artifactId"),
+    t(language, "prompt.field.type"),
+    t(language, "prompt.field.method"),
+    t(language, "prompt.field.prompt"),
+  ];
+
+  const widths = [0, 0, 0, 0];
+  for (const [index, header] of headers.entries()) {
+    widths[index] = stringWidth(header);
+  }
+  for (const row of rows) {
+    widths[0] = Math.max(widths[0], stringWidth(row.artifactId));
+    widths[1] = Math.max(widths[1], stringWidth(row.artifactType));
+    widths[2] = Math.max(widths[2], stringWidth(row.method));
+    widths[3] = Math.max(widths[3], stringWidth(row.prompt));
+  }
+
+  const headerLine = [
+    padCell(headers[0], widths[0]),
+    padCell(headers[1], widths[1]),
+    padCell(headers[2], widths[2]),
+    padCell(headers[3], widths[3]),
+  ].join("  ");
+  console.log(chalk.bold(headerLine));
+  console.log(chalk.dim("-".repeat(stringWidth(headerLine))));
+
+  for (const row of rows) {
+    const line = [
+      padCell(row.artifactId, widths[0]),
+      padCell(row.artifactType, widths[1]),
+      padCell(row.method, widths[2]),
+      padCell(row.prompt, widths[3]),
+    ].join("  ");
+    console.log(line);
+  }
+}
+
 async function pickLanguageInteractive(current: LanguageCode): Promise<LanguageCode> {
   const answer = await select({
     message: t(current, "config.language.prompt"),
     options: [
       { value: "en", label: "English (en)" },
-      { value: "ja", label: "日本語 (ja)" }
+      { value: "ja", label: "日本語 (ja)" },
     ],
-    initialValue: current
+    initialValue: current,
   });
 
   if (isCancel(answer)) {
@@ -114,7 +158,7 @@ async function validateStoredSession(): Promise<{
     return {
       status: "missing",
       source: session.source,
-      warnings: session.warnings
+      warnings: session.warnings,
     };
   }
 
@@ -126,13 +170,13 @@ async function validateStoredSession(): Promise<{
     return {
       status: "valid",
       source: session.source,
-      warnings: session.warnings
+      warnings: session.warnings,
     };
   } catch {
     return {
       status: "invalid",
       source: session.source,
-      warnings: session.warnings
+      warnings: session.warnings,
     };
   }
 }
@@ -154,7 +198,7 @@ function createPromptCommand(): Command {
 
       const results = await service.listPrompts(notebookId, {
         type: parseType(language, options.type),
-        limit: parseLimit(language, options.limit)
+        limit: parseLimit(language, options.limit),
       });
 
       if (options.json) {
@@ -167,10 +211,16 @@ function createPromptCommand(): Command {
         return;
       }
 
-      console.log(t(language, "prompt.table.header"));
-      for (const result of results) {
-        console.log(formatListRow(result));
-      }
+      console.log(gradient.pastel("NotebookLM Prompt List"));
+      printPromptTable(
+        language,
+        results.map((result) => ({
+          artifactId: result.artifactId,
+          artifactType: result.artifactType,
+          method: `${result.prompt.method}/${result.prompt.confidence}`,
+          prompt: summarizePromptText(result.prompt.text),
+        })),
+      );
     });
 
   prompt
@@ -181,44 +231,36 @@ function createPromptCommand(): Command {
     .option("--save", "Save output files")
     .option("--format <format>", "Save format: json|md")
     .option("--out <path>", "Output file or directory path")
-    .action(
-      async (
-        notebookId: string,
-        artifactId: string,
-        options: GetCommandOptions
-      ) => {
-        const language = await resolveLanguage();
-        const adapter = new NotebookLmSdkAdapter();
-        const service = new PromptExtractorService(adapter);
-        const result = await service.getPrompt(notebookId, artifactId);
+    .action(async (notebookId: string, artifactId: string, options: GetCommandOptions) => {
+      const language = await resolveLanguage();
+      const adapter = new NotebookLmSdkAdapter();
+      const service = new PromptExtractorService(adapter);
+      const result = await service.getPrompt(notebookId, artifactId);
 
-        if (options.json) {
-          console.log(JSON.stringify(result, null, 2));
-        } else {
-          console.log(`${t(language, "prompt.field.artifactId")}: ${result.artifactId}`);
-          console.log(`${t(language, "prompt.field.type")}: ${result.artifactType}`);
-          console.log(
-            `${t(language, "prompt.field.method")}: ${result.prompt.method} (${result.prompt.confidence})`
-          );
-          console.log(`${t(language, "prompt.field.prompt")}: ${result.prompt.text}`);
-          if (result.warnings.length > 0) {
-            console.log(
-              `${t(language, "prompt.field.warnings")}: ${result.warnings.join(" | ")}`
-            );
-          }
-        }
-
-        if (options.save) {
-          const written = await savePromptResult(result, {
-            format: parseFormat(language, options.format),
-            out: options.out
-          });
-          for (const target of written) {
-            console.log(`${t(language, "prompt.saved")}: ${target}`);
-          }
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(chalk.cyan(`${t(language, "prompt.field.artifactId")}: ${result.artifactId}`));
+        console.log(`${t(language, "prompt.field.type")}: ${result.artifactType}`);
+        console.log(
+          `${t(language, "prompt.field.method")}: ${result.prompt.method} (${result.prompt.confidence})`,
+        );
+        console.log(`${t(language, "prompt.field.prompt")}: ${result.prompt.text}`);
+        if (result.warnings.length > 0) {
+          console.log(`${t(language, "prompt.field.warnings")}: ${result.warnings.join(" | ")}`);
         }
       }
-    );
+
+      if (options.save) {
+        const written = await savePromptResult(result, {
+          format: parseFormat(language, options.format),
+          out: options.out,
+        });
+        for (const target of written) {
+          console.log(`${t(language, "prompt.saved")}: ${target}`);
+        }
+      }
+    });
 
   return prompt;
 }
@@ -270,8 +312,8 @@ function createConfigCommand(): Command {
       const next = await setLanguage(nextLanguage);
       console.log(
         t(next.language, "config.language.changed", {
-          value: next.language
-        })
+          value: next.language,
+        }),
       );
     });
 
@@ -299,16 +341,16 @@ function createAuthCommand(): Command {
       auth: {
         lastValidatedAt: new Date().toISOString(),
         lastSource: result.source,
-        lastStatus: result.status
-      }
+        lastStatus: result.status,
+      },
     };
     await saveConfig(nextConfig);
 
     if (result.status === "valid") {
       console.log(
         t(language, "auth.status.valid", {
-          source: result.source
-        })
+          source: result.source,
+        }),
       );
     } else if (result.status === "missing") {
       console.log(t(language, "auth.status.missing"));
@@ -338,8 +380,8 @@ function createAuthCommand(): Command {
       auth: {
         lastValidatedAt: new Date().toISOString(),
         lastSource: status.source,
-        lastStatus: status.status
-      }
+        lastStatus: status.status,
+      },
     });
     console.log(t(language, "auth.login.done"));
   });
@@ -353,8 +395,8 @@ function createAuthCommand(): Command {
       auth: {
         lastValidatedAt: new Date().toISOString(),
         lastSource: "none",
-        lastStatus: "missing"
-      }
+        lastStatus: "missing",
+      },
     });
     console.log(t(language, "auth.logout.done"));
   });
@@ -374,7 +416,7 @@ function createUpdateCommand(): Command {
       packageName: pkg.name,
       currentVersion: pkg.version,
       config,
-      force: true
+      force: true,
     });
     await saveConfig(result.nextConfig);
 
@@ -384,18 +426,20 @@ function createUpdateCommand(): Command {
     }
     if (result.hasUpdate) {
       console.log(
-        t(language, "update.available", {
-          current: pkg.version,
-          latest: result.latestVersion,
-          pkg: pkg.name
-        })
+        chalk.yellow(
+          t(language, "update.available", {
+            current: pkg.version,
+            latest: result.latestVersion,
+            pkg: pkg.name,
+          }),
+        ),
       );
       return;
     }
     console.log(
       t(language, "update.latest", {
-        current: pkg.version
-      })
+        current: pkg.version,
+      }),
     );
   });
 
@@ -414,7 +458,7 @@ async function maybeRunStartupUpdateCheck(argv: string[]): Promise<void> {
     packageName: pkg.name,
     currentVersion: pkg.version,
     config,
-    force: false
+    force: false,
   });
 
   if (!result.checked) return;
@@ -424,11 +468,13 @@ async function maybeRunStartupUpdateCheck(argv: string[]): Promise<void> {
   if (!result.hasUpdate) return;
 
   console.error(
-    t(language, "update.available", {
-      current: pkg.version,
-      latest: result.latestVersion,
-      pkg: pkg.name
-    })
+    chalk.yellow(
+      t(language, "update.available", {
+        current: pkg.version,
+        latest: result.latestVersion,
+        pkg: pkg.name,
+      }),
+    ),
   );
 }
 
