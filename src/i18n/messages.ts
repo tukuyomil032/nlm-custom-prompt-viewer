@@ -25,6 +25,11 @@ const en: Dict = {
   "config.language.changed": "Language changed to {value}.",
   "config.key.unknown": "Unknown config key: {key}. Supported keys: language",
   "config.value.invalidLanguage": "Invalid language: {value}. Use en or ja."
+  ,
+  "update.description": "Check package update status.",
+  "update.latest": "You are using the latest version ({current}).",
+  "update.available": "Update available: {current} -> {latest}. Run `bun add -g {pkg}`.",
+  "update.unreachable": "Could not reach npm registry. Skipping update check."
 };
 
 const ja: Dict = {
@@ -50,6 +55,11 @@ const ja: Dict = {
   "config.language.changed": "表示言語を {value} に変更しました。",
   "config.key.unknown": "不明な設定キーです: {key}。対応キー: language",
   "config.value.invalidLanguage": "不正な言語です: {value}。en または ja を指定してください。"
+  ,
+  "update.description": "パッケージの更新状況を確認します。",
+  "update.latest": "最新バージョンを利用中です（{current}）。",
+  "update.available": "更新があります: {current} -> {latest}。`bun add -g {pkg}` を実行してください。",
+  "update.unreachable": "npmレジストリに接続できなかったため、更新確認をスキップしました。"
 };
 
 const dictionaries: Record<LanguageCode, Dict> = { en, ja };

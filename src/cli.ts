@@ -1,5 +1,6 @@
 import { cancel, isCancel, select } from "@clack/prompts";
 import { Command } from "commander";
+import { readFile } from "node:fs/promises";
 import { NotebookLmSdkAdapter } from "./adapters/notebooklm.js";
 import {
   loadConfig,
@@ -15,6 +16,7 @@ import {
   SUPPORTED_ARTIFACT_TYPES,
   type SupportedArtifactType
 } from "./types.js";
+import { checkForUpdates } from "./update/checker.js";
 
 interface ListCommandOptions {
   json?: boolean;
@@ -27,6 +29,20 @@ interface GetCommandOptions {
   save?: boolean;
   format?: string;
   out?: string;
+}
+
+interface PackageMeta {
+  name: string;
+  version: string;
+}
+
+async function loadPackageMeta(): Promise<PackageMeta> {
+  const raw = await readFile(new URL("../package.json", import.meta.url), "utf8");
+  const payload = JSON.parse(raw) as { name?: unknown; version?: unknown };
+  return {
+    name: typeof payload.name === "string" ? payload.name : "nlm-custom-prompt-viewer",
+    version: typeof payload.version === "string" ? payload.version : "0.0.0"
+  };
 }
 
 async function resolveLanguage(): Promise<LanguageCode> {
@@ -238,6 +254,76 @@ function createConfigCommand(): Command {
   return config;
 }
 
+function createUpdateCommand(): Command {
+  const update = new Command("update");
+  update.description("Update commands");
+
+  update.command("check").action(async () => {
+    const config = await loadConfig();
+    const language = config.language;
+    const pkg = await loadPackageMeta();
+    const result = await checkForUpdates({
+      packageName: pkg.name,
+      currentVersion: pkg.version,
+      config,
+      force: true
+    });
+    await saveConfig(result.nextConfig);
+
+    if (!result.latestVersion) {
+      console.log(t(language, "update.unreachable"));
+      return;
+    }
+    if (result.hasUpdate) {
+      console.log(
+        t(language, "update.available", {
+          current: pkg.version,
+          latest: result.latestVersion,
+          pkg: pkg.name
+        })
+      );
+      return;
+    }
+    console.log(
+      t(language, "update.latest", {
+        current: pkg.version
+      })
+    );
+  });
+
+  return update;
+}
+
+async function maybeRunStartupUpdateCheck(argv: string[]): Promise<void> {
+  if (argv.includes("--json")) return;
+
+  const config = await loadConfig();
+  if (!config.updateCheck.enabled) return;
+
+  const language = config.language;
+  const pkg = await loadPackageMeta();
+  const result = await checkForUpdates({
+    packageName: pkg.name,
+    currentVersion: pkg.version,
+    config,
+    force: false
+  });
+
+  if (!result.checked) return;
+  await saveConfig(result.nextConfig);
+
+  if (!result.latestVersion) return;
+  if (!result.hasUpdate) return;
+
+  console.error(
+    t(language, "update.available", {
+      current: pkg.version,
+      latest: result.latestVersion,
+      pkg: pkg.name
+    })
+  );
+}
+
 export function createProgram(): Command {
   const program = new Command("nlm");
   program
@@ -246,10 +332,14 @@ export function createProgram(): Command {
 
   program.addCommand(createPromptCommand());
   program.addCommand(createConfigCommand());
+  program.addCommand(createUpdateCommand());
   return program;
 }
 
 export async function runCli(argv: string[]): Promise<number> {
+  void maybeRunStartupUpdateCheck(argv).catch(() => {
+    // Do not block command execution for background update checks.
+  });
   const program = createProgram();
   await program.parseAsync(argv, { from: "user" });
   return 0;
