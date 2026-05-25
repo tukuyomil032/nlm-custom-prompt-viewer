@@ -1,5 +1,6 @@
 import { cancel, confirm, isCancel, select, text } from "@clack/prompts";
 import chalk from "chalk";
+import cliProgress from "cli-progress";
 import { Command } from "commander";
 import gradient from "gradient-string";
 import { readFile } from "node:fs/promises";
@@ -13,6 +14,14 @@ import {
 import { loadConfig, resetConfig, saveConfig, setLanguage } from "./config/store.js";
 import { DEFAULT_CONFIG, type AppConfig, type LanguageCode } from "./config/types.js";
 import { t } from "./i18n/messages.js";
+import {
+  ArtifactDownloadService,
+  defaultDownloadDirectory,
+  type DownloadAllResult,
+  type DownloadArtifactOptions,
+  type SkippedArtifact,
+  type SlideDownloadFormat,
+} from "./services/artifactDownload.js";
 import {
   PromptExtractorService,
   summarizePromptText,
@@ -45,6 +54,11 @@ interface GetCommandOptions {
   out?: string;
 }
 
+interface DownloadCommandOptions {
+  out?: string;
+  slideFormat?: string;
+}
+
 interface PackageMeta {
   name: string;
   version: string;
@@ -65,9 +79,23 @@ interface PromptGetInput {
   optionalPrompt?: boolean;
 }
 
+interface PromptDownloadInput {
+  notebookId?: string;
+  artifactId?: string;
+  options: DownloadCommandOptions;
+  optionalPrompt?: boolean;
+}
+
+interface PromptDownloadAllInput {
+  notebookId?: string;
+  options: DownloadCommandOptions;
+  optionalPrompt?: boolean;
+}
+
 interface RuntimeDeps {
   adapter: NotebookLmSdkAdapter;
   service: PromptExtractorService;
+  downloadService: ArtifactDownloadService;
 }
 
 async function loadPackageMeta(): Promise<PackageMeta> {
@@ -118,6 +146,12 @@ function parseFormat(language: LanguageCode, input?: string): SaveFormat | undef
   throw new Error(t(language, "errors.badFormat"));
 }
 
+function parseSlideFormat(language: LanguageCode, input?: string): SlideDownloadFormat | undefined {
+  if (!input) return undefined;
+  if (input === "pdf" || input === "pptx") return input;
+  throw new Error(t(language, "errors.badSlideFormat"));
+}
+
 function parseLimit(language: LanguageCode, value?: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
@@ -137,6 +171,18 @@ function shortDate(value: string | null): string {
   const ts = Date.parse(value);
   if (!Number.isFinite(ts)) return value;
   return new Date(ts).toISOString().slice(0, 10);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value.toFixed(value >= 10 || index === 0 ? 1 : 2)} ${units[index]}`;
 }
 
 export function clipToWidth(input: string, max = 60): string {
@@ -288,6 +334,113 @@ function printListFailures(language: LanguageCode, failures: PromptListFailure[]
   }
 }
 
+function downloadSkipReasonLabel(
+  language: LanguageCode,
+  reason: SkippedArtifact["reason"],
+): string {
+  if (reason === "unsupported_type") {
+    return t(language, "prompt.download.skip.unsupportedType");
+  }
+  if (reason === "not_ready") {
+    return t(language, "prompt.download.skip.notReady");
+  }
+  if (reason === "not_exportable") {
+    return t(language, "prompt.download.skip.notExportable");
+  }
+  if (reason === "missing") {
+    return t(language, "prompt.download.skip.missing");
+  }
+  return t(language, "prompt.download.skip.failed");
+}
+
+function createDownloadProgressFactory(): DownloadArtifactOptions["progressFactory"] | undefined {
+  if (!process.stdout.isTTY) return undefined;
+
+  return ({ artifactTitle, artifactType }) => {
+    let bar: cliProgress.SingleBar | null = null;
+    let knownTotal: number | null = null;
+    let latestBytes = 0;
+    const label = clip(`${artifactType}: ${artifactTitle}`, 28);
+
+    return {
+      update(progress) {
+        latestBytes = progress.bytesTransferred;
+
+        if (!bar) {
+          knownTotal = progress.totalBytes;
+          const format =
+            progress.totalBytes === null
+              ? `${label} | {bytes}`
+              : `${label} |{bar}| {percentage}% | {value}/{total}`;
+          bar = new cliProgress.SingleBar(
+            {
+              clearOnComplete: true,
+              hideCursor: true,
+              format,
+            },
+            cliProgress.Presets.shades_classic,
+          );
+          bar.start(progress.totalBytes ?? 1, progress.totalBytes === null ? 0 : latestBytes, {
+            bytes: `${formatBytes(latestBytes)} / ?`,
+          });
+        }
+
+        if (progress.totalBytes === null) {
+          bar.update(0, {
+            bytes: `${formatBytes(latestBytes)} / ?`,
+          });
+          return;
+        }
+
+        if (knownTotal !== progress.totalBytes) {
+          knownTotal = progress.totalBytes;
+          bar.setTotal(progress.totalBytes);
+        }
+        bar.update(latestBytes);
+      },
+      stop() {
+        if (!bar) return;
+        if (knownTotal === null) {
+          bar.update(1, { bytes: formatBytes(latestBytes) });
+        } else {
+          bar.update(Math.max(latestBytes, knownTotal));
+        }
+        bar.stop();
+      },
+    };
+  };
+}
+
+function printDownloadAllSummary(language: LanguageCode, result: DownloadAllResult): void {
+  console.log(
+    t(language, "prompt.download.summary", {
+      downloaded: String(result.downloaded.length),
+      skipped: String(result.skipped.length),
+      failed: String(result.failed.length),
+    }),
+  );
+
+  for (const target of result.downloaded) {
+    console.log(`${t(language, "prompt.download.saved")}: ${target.path}`);
+  }
+
+  for (const skipped of result.skipped.slice(0, 5)) {
+    console.warn(
+      chalk.yellow(
+        `- ${clip(skipped.artifactId, 14)} [${clip(skipped.artifactType, 12)}] ${downloadSkipReasonLabel(language, skipped.reason)}`,
+      ),
+    );
+  }
+
+  for (const failed of result.failed.slice(0, 5)) {
+    console.warn(
+      chalk.red(
+        `- ${clip(failed.artifactId, 14)} [${clip(failed.artifactType, 12)}] ${failed.detail ?? downloadSkipReasonLabel(language, failed.reason)}`,
+      ),
+    );
+  }
+}
+
 function promptListEntryToRow(language: LanguageCode, entry: PromptListEntry): PromptTableRow {
   if (entry.prompt) {
     return {
@@ -402,7 +555,8 @@ async function validateStoredSession(): Promise<{
 function createRuntimeDeps(): RuntimeDeps {
   const adapter = new NotebookLmSdkAdapter();
   const service = new PromptExtractorService(adapter);
-  return { adapter, service };
+  const downloadService = new ArtifactDownloadService(adapter);
+  return { adapter, service, downloadService };
 }
 
 async function resolveNotebookId(
@@ -608,6 +762,63 @@ async function resolveSaveOptions(
   };
 }
 
+async function resolveSlideFormatInteractive(
+  language: LanguageCode,
+  current?: string,
+): Promise<SlideDownloadFormat | undefined | null> {
+  if (current) return parseSlideFormat(language, current);
+  if (!canPromptInteractively()) return undefined;
+
+  const selected = await pickSelect(
+    language,
+    t(language, "prompt.select.slideFormat"),
+    [
+      { value: "pdf", label: "pdf" },
+      { value: "pptx", label: "pptx" },
+    ],
+    "pdf",
+  );
+  return selected as SlideDownloadFormat | null;
+}
+
+async function resolveDownloadOptions(
+  language: LanguageCode,
+  notebookId: string,
+  artifactType: ArtifactRecord["type"] | "mixed",
+  options: DownloadCommandOptions,
+  optionalPrompt: boolean,
+): Promise<DownloadCommandOptions | null> {
+  const resolved: DownloadCommandOptions = {
+    out: options.out,
+    slideFormat: options.slideFormat,
+  };
+
+  if (
+    optionalPrompt &&
+    !resolved.slideFormat &&
+    canPromptInteractively() &&
+    (artifactType === "slides" || artifactType === "mixed")
+  ) {
+    const slideFormat = await resolveSlideFormatInteractive(language);
+    if (slideFormat === null) return null;
+    resolved.slideFormat = slideFormat;
+  } else if (resolved.slideFormat) {
+    parseSlideFormat(language, resolved.slideFormat);
+  }
+
+  if (optionalPrompt && !resolved.out && canPromptInteractively()) {
+    const out = await pickText(
+      language,
+      t(language, "prompt.select.downloadOut"),
+      defaultDownloadDirectory(notebookId),
+    );
+    if (out === null) return null;
+    resolved.out = out || undefined;
+  }
+
+  return resolved;
+}
+
 async function runPromptList(language: LanguageCode, deps: RuntimeDeps, input: PromptListInput) {
   const notebookId = await resolveNotebookId(language, deps.adapter, input.notebookId);
   if (!notebookId) return;
@@ -701,6 +912,86 @@ async function runPromptGet(language: LanguageCode, deps: RuntimeDeps, input: Pr
   for (const target of written) {
     console.log(`${t(language, "prompt.saved")}: ${target}`);
   }
+
+  if (input.optionalPrompt && canPromptInteractively()) {
+    const shouldDownload = await pickConfirm(
+      language,
+      t(language, "prompt.select.downloadAfterGet"),
+    );
+    if (shouldDownload === null || !shouldDownload) return;
+
+    const downloadOptions = await resolveDownloadOptions(
+      language,
+      notebookId,
+      result.artifactType,
+      {},
+      true,
+    );
+    if (!downloadOptions) return;
+
+    const downloaded = await deps.downloadService.downloadArtifact(notebookId, artifactId, {
+      out: downloadOptions.out,
+      slideFormat: parseSlideFormat(language, downloadOptions.slideFormat),
+      progressFactory: createDownloadProgressFactory(),
+    });
+    console.log(`${t(language, "prompt.download.saved")}: ${downloaded.path}`);
+  }
+}
+
+async function runPromptDownload(
+  language: LanguageCode,
+  deps: RuntimeDeps,
+  input: PromptDownloadInput,
+) {
+  const notebookId = await resolveNotebookId(language, deps.adapter, input.notebookId);
+  if (!notebookId) return;
+  const artifactId = await resolveArtifactId(language, deps.adapter, notebookId, input.artifactId);
+  if (!artifactId) return;
+
+  const info = await deps.adapter.getArtifactDownloadInfo(notebookId, artifactId);
+  if (!info) {
+    throw new Error(`artifactId=${artifactId} was not found.`);
+  }
+
+  const options = await resolveDownloadOptions(
+    language,
+    notebookId,
+    info.artifactType,
+    input.options,
+    Boolean(input.optionalPrompt),
+  );
+  if (!options) return;
+  const downloaded = await deps.downloadService.downloadArtifact(notebookId, artifactId, {
+    out: options.out,
+    slideFormat: parseSlideFormat(language, options.slideFormat),
+    progressFactory: createDownloadProgressFactory(),
+  });
+  console.log(`${t(language, "prompt.download.saved")}: ${downloaded.path}`);
+}
+
+async function runPromptDownloadAll(
+  language: LanguageCode,
+  deps: RuntimeDeps,
+  input: PromptDownloadAllInput,
+) {
+  const notebookId = await resolveNotebookId(language, deps.adapter, input.notebookId);
+  if (!notebookId) return;
+
+  const options = await resolveDownloadOptions(
+    language,
+    notebookId,
+    "mixed",
+    input.options,
+    Boolean(input.optionalPrompt),
+  );
+  if (!options) return;
+
+  const result = await deps.downloadService.downloadAllArtifacts(notebookId, {
+    out: options.out,
+    slideFormat: parseSlideFormat(language, options.slideFormat),
+    progressFactory: createDownloadProgressFactory(),
+  });
+  printDownloadAllSummary(language, result);
 }
 
 async function runConfigGet(language: LanguageCode, key?: string): Promise<void> {
@@ -878,6 +1169,8 @@ async function runPromptMenu(language: LanguageCode, deps: RuntimeDeps): Promise
     [
       { value: "list", label: t(language, "prompt.command.list") },
       { value: "get", label: t(language, "prompt.command.get") },
+      { value: "download", label: t(language, "prompt.command.download") },
+      { value: "download-all", label: t(language, "prompt.command.downloadAll") },
     ],
     "list",
   );
@@ -890,7 +1183,21 @@ async function runPromptMenu(language: LanguageCode, deps: RuntimeDeps): Promise
     });
     return;
   }
-  await runPromptGet(language, deps, {
+  if (picked === "get") {
+    await runPromptGet(language, deps, {
+      options: {},
+      optionalPrompt: true,
+    });
+    return;
+  }
+  if (picked === "download") {
+    await runPromptDownload(language, deps, {
+      options: {},
+      optionalPrompt: true,
+    });
+    return;
+  }
+  await runPromptDownloadAll(language, deps, {
     options: {},
     optionalPrompt: true,
   });
@@ -986,7 +1293,7 @@ function createPromptCommand(language: LanguageCode): Command {
   prompt.description(t(language, "prompt.description"));
   prompt.addHelpText(
     "after",
-    `\n${t(language, "prompt.list.help")}\n\n${t(language, "prompt.get.help")}`,
+    `\n${t(language, "prompt.list.help")}\n\n${t(language, "prompt.get.help")}\n\n${t(language, "prompt.download.help")}\n\n${t(language, "prompt.downloadAll.help")}`,
   );
 
   prompt.action(async () => {
@@ -1039,6 +1346,48 @@ function createPromptCommand(language: LanguageCode): Command {
         });
       },
     );
+
+  prompt
+    .command("download")
+    .description(t(language, "prompt.command.download"))
+    .argument("[notebookId]", "NotebookLM notebook id")
+    .argument("[artifactId]", "Studio artifact id")
+    .option("--out <path>", "Output file or directory path")
+    .option("--slide-format <format>", "Slide deck format: pdf|pptx")
+    .addHelpText("after", `\n${t(language, "prompt.download.help")}`)
+    .action(
+      async (
+        notebookId: string | undefined,
+        artifactId: string | undefined,
+        options: DownloadCommandOptions,
+      ) => {
+        const deps = createRuntimeDeps();
+        const optionalPrompt = !options.out && !options.slideFormat;
+        await runPromptDownload(language, deps, {
+          notebookId,
+          artifactId,
+          options,
+          optionalPrompt,
+        });
+      },
+    );
+
+  prompt
+    .command("download-all")
+    .description(t(language, "prompt.command.downloadAll"))
+    .argument("[notebookId]", "NotebookLM notebook id")
+    .option("--out <path>", "Output directory path")
+    .option("--slide-format <format>", "Slide deck format: pdf|pptx")
+    .addHelpText("after", `\n${t(language, "prompt.downloadAll.help")}`)
+    .action(async (notebookId: string | undefined, options: DownloadCommandOptions) => {
+      const deps = createRuntimeDeps();
+      const optionalPrompt = !options.out && !options.slideFormat;
+      await runPromptDownloadAll(language, deps, {
+        notebookId,
+        options,
+        optionalPrompt,
+      });
+    });
 
   return prompt;
 }

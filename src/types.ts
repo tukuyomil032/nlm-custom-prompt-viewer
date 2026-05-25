@@ -36,6 +36,7 @@ export interface ArtifactRecord {
   type: SupportedArtifactType | "unsupported";
   rawType: string;
   createdAt: string | null;
+  status: string | null;
   raw: unknown;
 }
 
@@ -52,6 +53,34 @@ export interface ListPromptOptions {
   infer?: boolean;
 }
 
+export interface DataTableContent {
+  headers: string[];
+  rows: string[][];
+}
+
+export interface BinaryDownloadProgress {
+  bytesTransferred: number;
+  totalBytes: number | null;
+}
+
+export interface ArtifactDownloadInfo {
+  notebookId: string;
+  artifactId: string;
+  artifactType: ArtifactRecord["type"];
+  artifactTitle: string;
+  rawType: string;
+  status: string | null;
+  audioUrl: string | null;
+  videoUrl: string | null;
+  slidePdfUrl: string | null;
+  slidePptxUrl: string | null;
+  infographicUrl: string | null;
+  reportMarkdown: string | null;
+  interactiveHtml: string | null;
+  dataTable: DataTableContent | null;
+  mindMapContent: string | null;
+}
+
 export interface NotebookLmAdapter {
   listNotebooks(): Promise<NotebookRecord[]>;
   listArtifacts(notebookId: string): Promise<ArtifactRecord[]>;
@@ -59,4 +88,16 @@ export interface NotebookLmAdapter {
     notebookId: string,
     artifact: Pick<ArtifactRecord, "id" | "title" | "rawType">,
   ): Promise<string | null>;
+}
+
+export interface ArtifactDownloadAdapter {
+  listArtifacts(notebookId: string): Promise<ArtifactRecord[]>;
+  getArtifactDownloadInfo(
+    notebookId: string,
+    artifactId: string,
+  ): Promise<ArtifactDownloadInfo | null>;
+  downloadBinary(
+    url: string,
+    onProgress?: (progress: BinaryDownloadProgress) => void,
+  ): Promise<Buffer>;
 }

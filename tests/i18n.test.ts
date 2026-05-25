@@ -11,4 +11,10 @@ describe("i18n", () => {
     const message = t("ja", "config.reset");
     expect(message).toContain("初期化");
   });
+
+  it("includes download-related messages", () => {
+    expect(t("en", "prompt.select.downloadAfterGet")).toContain("Download");
+    expect(t("ja", "errors.badSlideFormat")).toContain("slide-format");
+    expect(t("ja", "prompt.download.summary")).toContain("downloaded");
+  });
 });

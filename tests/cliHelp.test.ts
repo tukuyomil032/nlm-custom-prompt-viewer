@@ -4,6 +4,16 @@ import { clipToWidth, createProgram } from "../src/cli.js";
 import { t } from "../src/i18n/messages.js";
 
 describe("CLI help", () => {
+  function promptHelp(language: "en" | "ja"): string {
+    const promptCommand = createProgram(language).commands.find(
+      (command) => command.name() === "prompt",
+    );
+    if (!promptCommand) {
+      throw new Error("prompt command not found");
+    }
+    return promptCommand.helpInformation();
+  }
+
   it("shows root help in english", () => {
     const help = createProgram("en").helpInformation();
     expect(help).toContain("NotebookLM custom prompt helper CLI");
@@ -25,6 +35,16 @@ describe("CLI help", () => {
     const note = t("en", "prompt.list.help");
     expect(note).toContain("--infer");
     expect(note).toContain("data_table");
+  });
+
+  it("documents artifact download commands", () => {
+    const help = promptHelp("en");
+    expect(help).toContain("download-all");
+    expect(help).toContain("download");
+
+    const note = t("en", "prompt.download.help");
+    expect(note).toContain("prompt download");
+    expect(note).toContain("slide-format");
   });
 
   it("clips japanese text by display width", () => {

@@ -24,6 +24,7 @@ Recover and reuse custom prompts used by NotebookLM Studio artifacts from the co
   - **Fast (default)**: direct metadata extraction (`method: direct`, `confidence: high`)
   - **Infer (`--infer`)**: Q&A fallback when direct extraction is unavailable (`method: qa_fallback`, `confidence: inferred`)
 - Save outputs as `json` and/or `md`
+- Download artifact outputs with notebook-scoped save paths
 - Multilingual CLI messages:
   - default `en`
   - switchable to `ja`
@@ -65,6 +66,13 @@ nlmv prompt list <notebookId>
 nlmv prompt get <notebookId> <artifactId> --save
 ```
 
+4. Download one artifact or all exportable artifacts:
+
+```bash
+nlmv prompt download <notebookId> <artifactId>
+nlmv prompt download-all <notebookId>
+```
+
 ## CLI Overview
 
 ### Prompt commands
@@ -72,6 +80,8 @@ nlmv prompt get <notebookId> <artifactId> --save
 ```bash
 nlmv prompt list <notebookId> [--type <artifactType>] [--json] [--limit <n>] [--infer]
 nlmv prompt get <notebookId> <artifactId> [--json] [--save] [--format json|md] [--out <path>]
+nlmv prompt download <notebookId> <artifactId> [--out <path>] [--slide-format pdf|pptx]
+nlmv prompt download-all <notebookId> [--out <path>] [--slide-format pdf|pptx]
 ```
 
 ### Config commands
@@ -119,11 +129,31 @@ automatically — `--infer` is not required for single-artifact retrieval.
   - `./outputs/<slug>.md`
   - `<slug>` = `slugify(artifactTitle)` (lowercase + hyphens); falls back to `artifactId`
   - Example: "My AI Podcast" → `./outputs/my-ai-podcast.json`
+- `prompt download` / `prompt download-all` default paths:
+  - `./outputs/downloads/<notebookId>/<slug>.<ext>`
+  - `<slug>` = `slugify(artifactTitle)` (lowercase + hyphens); falls back to `artifactId`
+  - `slides` default to `.pdf`; use `--slide-format pptx` for `.pptx`
+  - Extensions:
+    - `video` → `.mp4`
+    - `audio` → `.mp3`
+    - `slides` → `.pdf` or `.pptx`
+    - `infographic` → `.png`
+    - `report` → `.md`
+    - `quiz` / `flashcards` → `.html`
+    - `data_table` → `.csv`
+    - `mind_map` → `.json`
 - `--out <path>` behavior:
   - **Directory** (no `.json`/`.md` extension): saves `<path>/<slug>.<format>` for each format
   - **File** (`.json` or `.md` extension) + `--format <fmt>`: saves directly to `<path>`
   - Tilde expansion is supported (`~/docs` → `$HOME/docs`)
+- download `--out <path>` behavior:
+  - `prompt download`: file extension included = write directly to that file, otherwise treat as directory
+  - `prompt download-all`: always treats `--out` as a directory
 - `--format json|md` limits output to one format (default: both)
+- download progress:
+  - binary artifact downloads use `cli-progress`
+  - when `Content-Length` is available, progress is byte-accurate
+  - when it is missing, the CLI falls back to bytes-received display without fake percentages
 - Config file: `~/.config/nlm-prompt/config.json`
   (override: `$XDG_CONFIG_HOME/nlm-prompt/config.json`)
 - Session file: `~/.notebooklm/session.json`
@@ -141,7 +171,9 @@ to trigger inline prompts:
 
 ```bash
 nlmv prompt list    # prompts for notebook ID interactively
-nlmv prompt get     # prompts for notebook + artifact selection
+nlmv prompt get     # prompts for notebook + artifact selection, then offers save/download
+nlmv prompt download     # prompts for notebook + artifact selection
+nlmv prompt download-all # prompts for notebook selection
 nlmv config set     # prompts for key and value
 ```
 
@@ -175,6 +207,9 @@ just typecheck
 just test
 just build
 just ci
+just prompt-download <notebookId> <artifactId>
+just prompt-download-all <notebookId>
+just cli "prompt download <notebookId> <artifactId> --slide-format pptx"
 ```
 
 ## Notes
@@ -184,6 +219,9 @@ just ci
 
 > [!NOTE]
 > If `keytar` is unavailable in your runtime, the CLI automatically falls back to secure file-based session storage.
+
+> [!NOTE]
+> For tests or debugging, you can force file-only session handling with `NLM_PROMPT_DISABLE_KEYTAR=1`. This does not change the meaning of `NLM_PROMPT_SESSION_FILE`; it only bypasses keychain lookup.
 
 > [!NOTE]
 > `nlm-prompt` is an alias for `nlmv` — both point to the same binary.

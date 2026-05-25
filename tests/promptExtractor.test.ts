@@ -11,6 +11,7 @@ function makeArtifact(
     type: overrides.type,
     rawType: overrides.rawType ?? overrides.type,
     createdAt: overrides.createdAt ?? null,
+    status: overrides.status ?? null,
     raw: overrides.raw ?? {},
   };
 }

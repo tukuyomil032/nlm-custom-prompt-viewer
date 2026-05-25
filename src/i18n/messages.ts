@@ -20,6 +20,8 @@ const en: Dict = {
   "prompt.command.select": "Select a prompt command",
   "prompt.command.list": "List prompts",
   "prompt.command.get": "Get one prompt",
+  "prompt.command.download": "Download one artifact",
+  "prompt.command.downloadAll": "Download all artifacts",
   "prompt.field.artifactId": "artifactId",
   "prompt.field.type": "type",
   "prompt.field.method": "method",
@@ -34,8 +36,11 @@ const en: Dict = {
   "prompt.select.type": "Filter artifact type",
   "prompt.select.limit": "Set list limit (blank = no limit)",
   "prompt.select.save": "Save output files?",
+  "prompt.select.downloadAfterGet": "Download this artifact too?",
+  "prompt.select.downloadOut": "Download output path (blank = default)",
   "prompt.select.format": "Choose save format",
   "prompt.select.out": "Output path (blank = default)",
+  "prompt.select.slideFormat": "Choose slide deck format",
   "prompt.select.mode": "Choose output mode",
   "prompt.mode.human": "Readable output",
   "prompt.mode.json": "JSON output",
@@ -51,6 +56,10 @@ const en: Dict = {
     "List prompts from artifacts.\n\nExamples:\n  nlm prompt list <notebookId>\n  nlm prompt list --type slides --limit 5\n  nlm prompt list --infer\n  nlm prompt list --json\n\nSupported Studio types:\n  slides, video, audio, quiz, flashcards, report, mind_map, infographic, data_table\n\nBy default list mode is fast and only reads directly stored prompt metadata. Use `--infer` to run slower Notebook Q&A fallback inference. If notebook listing fails in interactive mode, you can continue by entering notebookId manually. All artifacts are shown; rows without prompt text include a status.",
   "prompt.get.help":
     "Get a prompt from one artifact.\n\nExamples:\n  nlm prompt get <notebookId> <artifactId>\n  nlm prompt get --save --format md\n  nlm prompt get --json\n\nIf listing fails in interactive mode, you can continue by entering notebookId/artifactId manually.",
+  "prompt.download.help":
+    "Download one artifact.\n\nExamples:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\nBinary downloads show byte-accurate progress when content length is available.",
+  "prompt.downloadAll.help":
+    "Download all completed/exportable artifacts from a notebook.\n\nExamples:\n  nlm prompt download-all <notebookId>\n  nlm prompt download-all --slide-format pptx\n  nlm prompt download-all --out ./outputs/downloads/custom\n\nUnsupported, not-ready, and non-exportable artifacts are skipped and summarized at the end.",
   "prompt.fallback.notebookFetchFailed":
     "Notebook listing failed. Continue with manual notebookId input. Reason: {reason}",
   "prompt.fallback.artifactFetchFailed":
@@ -65,8 +74,17 @@ const en: Dict = {
   "prompt.list.status.noPrompt": "no prompt",
   "prompt.list.inferNotice":
     "Running Notebook Q&A fallback inference; this can take a few seconds.",
+  "prompt.download.saved": "downloaded",
+  "prompt.download.summary":
+    "Download summary: downloaded={downloaded}, skipped={skipped}, failed={failed}",
+  "prompt.download.skip.unsupportedType": "unsupported type",
+  "prompt.download.skip.notReady": "not ready yet",
+  "prompt.download.skip.notExportable": "not exportable",
+  "prompt.download.skip.missing": "artifact metadata missing",
+  "prompt.download.skip.failed": "download failed",
   "errors.unsupportedType": "Unsupported --type '{value}'. Supported: {supported}",
   "errors.badFormat": "`--format` must be `json` or `md`.",
+  "errors.badSlideFormat": "`--slide-format` must be `pdf` or `pptx`.",
   "errors.badLimit": "`--limit` must be an integer >= 1.",
   "errors.helpHint": "(Run with --help for usage.)",
   "errors.requiredValue": "Missing required value: {name}",
@@ -125,6 +143,8 @@ const ja: Dict = {
   "prompt.command.select": "promptコマンドを選択してください",
   "prompt.command.list": "プロンプト一覧",
   "prompt.command.get": "単体プロンプト取得",
+  "prompt.command.download": "成果物を1件ダウンロード",
+  "prompt.command.downloadAll": "成果物を一括ダウンロード",
   "prompt.field.artifactId": "artifactId",
   "prompt.field.type": "type",
   "prompt.field.method": "method",
@@ -139,8 +159,11 @@ const ja: Dict = {
   "prompt.select.type": "成果物タイプで絞り込みますか？",
   "prompt.select.limit": "表示件数を指定（空欄 = 制限なし）",
   "prompt.select.save": "結果をファイル保存しますか？",
+  "prompt.select.downloadAfterGet": "この成果物も続けてダウンロードしますか？",
+  "prompt.select.downloadOut": "ダウンロード先パス（空欄 = 既定値）",
   "prompt.select.format": "保存形式を選択してください",
   "prompt.select.out": "出力パス（空欄 = 既定値）",
+  "prompt.select.slideFormat": "スライドの保存形式を選択してください",
   "prompt.select.mode": "出力モードを選択してください",
   "prompt.mode.human": "読みやすい表示",
   "prompt.mode.json": "JSON表示",
@@ -156,6 +179,10 @@ const ja: Dict = {
     "成果物からプロンプト一覧を取得します。\n\n例:\n  nlm prompt list <notebookId>\n  nlm prompt list --type slides --limit 5\n  nlm prompt list --infer\n  nlm prompt list --json\n\n対応Studioタイプ:\n  slides, video, audio, quiz, flashcards, report, mind_map, infographic, data_table\n\nlistは高速表示を優先し、既定では直接保存されたプロンプトメタデータのみ読みます。遅いNotebook Q&A推論フォールバックは `--infer` 指定時だけ実行します。対話モードでノート一覧取得に失敗した場合は、notebookId手入力で続行できます。全成果物を表示し、プロンプト未抽出の行にはstatusを表示します。",
   "prompt.get.help":
     "成果物1件のプロンプトを取得します。\n\n例:\n  nlm prompt get <notebookId> <artifactId>\n  nlm prompt get --save --format md\n  nlm prompt get --json\n\n対話モードで一覧取得に失敗した場合は、notebookId/artifactId手入力で続行できます。",
+  "prompt.download.help":
+    "成果物をダウンロードします。\n\n例:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\nContent-Length が取れるバイナリは、バイト単位で正確な進捗を表示します。",
+  "prompt.downloadAll.help":
+    "ノートブック内の完了済み/出力可能な成果物をまとめてダウンロードします。\n\n例:\n  nlm prompt download-all <notebookId>\n  nlm prompt download-all --slide-format pptx\n  nlm prompt download-all --out ./outputs/downloads/custom\n\n未対応・未完了・未出力の成果物は最後に集計してスキップ表示します。",
   "prompt.fallback.notebookFetchFailed":
     "ノート一覧の取得に失敗したため、notebookId手入力に切り替えます。理由: {reason}",
   "prompt.fallback.artifactFetchFailed":
@@ -171,8 +198,17 @@ const ja: Dict = {
   "prompt.list.status.noPrompt": "no prompt",
   "prompt.list.inferNotice":
     "Notebook Q&A推論フォールバックを実行しています。数秒かかる場合があります。",
+  "prompt.download.saved": "downloaded",
+  "prompt.download.summary":
+    "ダウンロード結果: downloaded={downloaded}, skipped={skipped}, failed={failed}",
+  "prompt.download.skip.unsupportedType": "未対応タイプ",
+  "prompt.download.skip.notReady": "まだ未完了",
+  "prompt.download.skip.notExportable": "まだ出力不可",
+  "prompt.download.skip.missing": "成果物メタデータ不足",
+  "prompt.download.skip.failed": "ダウンロード失敗",
   "errors.unsupportedType": "未対応の --type '{value}' です。対応: {supported}",
   "errors.badFormat": "`--format` は `json` または `md` を指定してください。",
+  "errors.badSlideFormat": "`--slide-format` は `pdf` または `pptx` を指定してください。",
   "errors.badLimit": "`--limit` は1以上の整数を指定してください。",
   "errors.helpHint": "（使い方は --help を参照）",
   "errors.requiredValue": "必須値が不足しています: {name}",

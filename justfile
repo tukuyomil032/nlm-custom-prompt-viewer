@@ -18,6 +18,15 @@ dev:
 dev-cli:
   bun src/index.ts
 
+cli ARGS='':
+  bun src/index.ts {{ARGS}}
+
+prompt-download NOTEBOOK_ID ARTIFACT_ID:
+  bun src/index.ts prompt download {{NOTEBOOK_ID}} {{ARTIFACT_ID}}
+
+prompt-download-all NOTEBOOK_ID:
+  bun src/index.ts prompt download-all {{NOTEBOOK_ID}}
+
 lint:
   bun run lint
 

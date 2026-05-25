@@ -1,5 +1,9 @@
 import type {
+  ArtifactDownloadAdapter,
+  ArtifactDownloadInfo,
   ArtifactRecord,
+  BinaryDownloadProgress,
+  DataTableContent,
   NotebookLmAdapter,
   NotebookRecord,
   SupportedArtifactType,
@@ -28,6 +32,14 @@ const TYPE_ALIASES: Record<string, SupportedArtifactType> = {
   table: "data_table",
 };
 
+const TRUSTED_MEDIA_DOMAINS = [
+  ".googleusercontent.com",
+  ".googlevideo.com",
+  ".gstatic.com",
+  ".googleapis.com",
+  ".usercontent.google.com",
+];
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
 }
@@ -50,6 +62,82 @@ function normalizeType(rawType: string): SupportedArtifactType | "unsupported" {
 function getDateString(obj: UnknownRecord, ...keys: string[]): string | null {
   const value = getString(obj, ...keys);
   return value ?? null;
+}
+
+function getStatusString(obj: UnknownRecord): string | null {
+  return getString(obj, "status") ?? null;
+}
+
+function toDataTableContent(value: unknown): DataTableContent | null {
+  if (!isRecord(value)) return null;
+  if (!Array.isArray(value.headers) || !Array.isArray(value.rows)) return null;
+  const headers = value.headers.filter((item): item is string => typeof item === "string");
+  const rows = value.rows
+    .filter(Array.isArray)
+    .map((row) => row.filter((item): item is string => typeof item === "string"));
+  return { headers, rows };
+}
+
+function findRawArtifactEntry(items: unknown[], artifactId: string): unknown[] | null {
+  for (const item of items) {
+    if (Array.isArray(item) && item[0] === artifactId) {
+      return item;
+    }
+    if (isRecord(item)) {
+      if (
+        getString(item, "id", "artifactId", "artifact_id") === artifactId &&
+        Array.isArray(item._raw)
+      ) {
+        return item._raw as unknown[];
+      }
+    }
+  }
+  return null;
+}
+
+function extractSlideDeckUrls(raw: unknown[] | null): { pdf: string | null; pptx: string | null } {
+  if (!raw || !Array.isArray(raw[16])) {
+    return { pdf: null, pptx: null };
+  }
+  const metadata = raw[16];
+  return {
+    pdf: Array.isArray(metadata) && typeof metadata[3] === "string" ? metadata[3] : null,
+    pptx: Array.isArray(metadata) && typeof metadata[4] === "string" ? metadata[4] : null,
+  };
+}
+
+function extractInfographicUrl(raw: unknown[] | null): string | null {
+  if (!raw) return null;
+  for (let index = raw.length - 1; index >= 0; index -= 1) {
+    const item = raw[index];
+    if (
+      Array.isArray(item) &&
+      Array.isArray(item[2]) &&
+      Array.isArray(item[2][0]) &&
+      Array.isArray(item[2][0][1]) &&
+      typeof item[2][0][1][0] === "string" &&
+      item[2][0][1][0].startsWith("http")
+    ) {
+      return item[2][0][1][0];
+    }
+  }
+  return null;
+}
+
+function extractMindMapContent(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+  return typeof raw.content === "string" ? raw.content : null;
+}
+
+function isTrustedMediaUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return TRUSTED_MEDIA_DOMAINS.some(
+      (domain) => hostname === domain.slice(1) || hostname.endsWith(domain),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function ensureAuthFriendlyError(error: unknown): never {
@@ -119,6 +207,7 @@ function toArtifactRecord(item: unknown): ArtifactRecord | null {
     rawType,
     type: normalizeType(rawType),
     createdAt: getDateString(item, "createdAt", "created_at", "created", "timestamp"),
+    status: getStatusString(item),
     raw: item,
   };
 }
@@ -138,7 +227,7 @@ function toNotebookRecord(item: unknown): NotebookRecord | null {
   };
 }
 
-export class NotebookLmSdkAdapter implements NotebookLmAdapter {
+export class NotebookLmSdkAdapter implements NotebookLmAdapter, ArtifactDownloadAdapter {
   private readonly clientPromise: Promise<unknown>;
 
   public constructor(client?: unknown) {
@@ -198,6 +287,127 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
       if (!answer) return null;
       if (answer.trim().toUpperCase() === "UNKNOWN") return null;
       return answer.trim();
+    } catch (error) {
+      ensureAuthFriendlyError(error);
+    }
+  }
+
+  public async getArtifactDownloadInfo(
+    notebookId: string,
+    artifactId: string,
+  ): Promise<ArtifactDownloadInfo | null> {
+    try {
+      const client = (await this.clientPromise) as UnknownRecord;
+      const artifacts = await this.listArtifacts(notebookId);
+      const artifact = artifacts.find((item) => item.id === artifactId);
+      if (!artifact) return null;
+
+      const payload = await this.fetchArtifactsPayload(client, notebookId);
+      const items = pickFirstArray(payload, [
+        (root) => (isRecord(root) ? root.artifacts : undefined),
+        (root) => (isRecord(root) && isRecord(root.studio) ? root.studio.artifacts : undefined),
+        (root) => (isRecord(root) ? root.items : undefined),
+        (root) => root,
+      ]);
+      const rawArtifact = findRawArtifactEntry(items, artifactId);
+
+      let parsedArtifact: UnknownRecord | null = null;
+      if (isRecord(client.artifacts) && typeof client.artifacts.get === "function") {
+        try {
+          const result = await (
+            client.artifacts as {
+              get: (nbId: string, artId: string) => Promise<unknown>;
+            }
+          ).get(notebookId, artifactId);
+          if (isRecord(result)) {
+            parsedArtifact = result;
+          }
+        } catch {
+          parsedArtifact = null;
+        }
+      }
+
+      let reportMarkdown: string | null = null;
+      if (artifact.type === "report") {
+        reportMarkdown =
+          (parsedArtifact ? getString(parsedArtifact, "content") : undefined) ??
+          extractMindMapContent(artifact.raw);
+        if (
+          reportMarkdown === null &&
+          isRecord(client.artifacts) &&
+          typeof client.artifacts.getReportMarkdown === "function"
+        ) {
+          reportMarkdown = await (
+            client.artifacts as {
+              getReportMarkdown: (nbId: string, artId: string) => Promise<string | null>;
+            }
+          ).getReportMarkdown(notebookId, artifactId);
+        }
+      }
+
+      let interactiveHtml: string | null = null;
+      if (
+        (artifact.type === "quiz" || artifact.type === "flashcards") &&
+        isRecord(client.artifacts) &&
+        typeof client.artifacts.getInteractiveHtml === "function"
+      ) {
+        interactiveHtml = await (
+          client.artifacts as {
+            getInteractiveHtml: (nbId: string, artId: string) => Promise<string | null>;
+          }
+        ).getInteractiveHtml(notebookId, artifactId);
+      }
+
+      let dataTable: DataTableContent | null = null;
+      if (
+        artifact.type === "data_table" &&
+        isRecord(client.artifacts) &&
+        typeof client.artifacts.getDataTableContent === "function"
+      ) {
+        dataTable = toDataTableContent(
+          await (
+            client.artifacts as {
+              getDataTableContent: (nbId: string, artId: string) => Promise<unknown>;
+            }
+          ).getDataTableContent(notebookId, artifactId),
+        );
+      }
+
+      const slideDeckUrls = extractSlideDeckUrls(rawArtifact);
+
+      return {
+        notebookId,
+        artifactId: artifact.id,
+        artifactType: artifact.type,
+        artifactTitle: artifact.title,
+        rawType: artifact.rawType,
+        status:
+          artifact.status ??
+          (parsedArtifact ? getStatusString(parsedArtifact) : null) ??
+          (artifact.type === "mind_map" ? "completed" : null),
+        audioUrl: parsedArtifact ? (getString(parsedArtifact, "audioUrl") ?? null) : null,
+        videoUrl: parsedArtifact ? (getString(parsedArtifact, "videoUrl") ?? null) : null,
+        slidePdfUrl: slideDeckUrls.pdf,
+        slidePptxUrl: slideDeckUrls.pptx,
+        infographicUrl: extractInfographicUrl(rawArtifact),
+        reportMarkdown,
+        interactiveHtml,
+        dataTable,
+        mindMapContent: artifact.type === "mind_map" ? extractMindMapContent(artifact.raw) : null,
+      };
+    } catch (error) {
+      ensureAuthFriendlyError(error);
+    }
+  }
+
+  public async downloadBinary(
+    url: string,
+    onProgress?: (progress: BinaryDownloadProgress) => void,
+  ): Promise<Buffer> {
+    try {
+      const client = (await this.clientPromise) as UnknownRecord;
+      const cookieHeader = this.resolveGoogleCookieHeader(client);
+      return await this.fetchBinaryWithProgress(url, cookieHeader, onProgress);
     } catch (error) {
       ensureAuthFriendlyError(error);
     }
@@ -321,6 +531,83 @@ export class NotebookLmSdkAdapter implements NotebookLmAdapter {
     throw new Error(
       `Could not call notebook listing APIs. SDK method names may have changed.${detail}`,
     );
+  }
+
+  private resolveGoogleCookieHeader(client: UnknownRecord): string {
+    if (isRecord(client.auth)) {
+      const googleCookieHeader = getString(client.auth, "googleCookieHeader", "cookieHeader");
+      if (googleCookieHeader) return googleCookieHeader;
+    }
+    throw new Error(
+      "Authenticated media download is unavailable because cookie headers are missing.",
+    );
+  }
+
+  private async fetchBinaryWithProgress(
+    url: string,
+    cookieHeader: string,
+    onProgress?: (progress: BinaryDownloadProgress) => void,
+    maxRedirects = 10,
+  ): Promise<Buffer> {
+    let currentUrl = url;
+
+    for (let redirectCount = 0; redirectCount < maxRedirects; redirectCount += 1) {
+      if (!isTrustedMediaUrl(currentUrl)) {
+        throw new Error(`Untrusted redirect target: ${new URL(currentUrl).hostname}`);
+      }
+
+      const response = await fetch(currentUrl, {
+        headers: { Cookie: cookieHeader },
+        redirect: "manual",
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) {
+          throw new Error(`Redirect with no Location header (status ${response.status})`);
+        }
+        currentUrl = location.startsWith("http") ? location : new URL(location, currentUrl).href;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Media download failed: HTTP ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("text/html")) {
+        throw new Error("Media download returned HTML; authentication cookies may be expired.");
+      }
+
+      const contentLength = response.headers.get("content-length");
+      const totalBytes =
+        contentLength && Number.isFinite(Number(contentLength)) ? Number(contentLength) : null;
+      let bytesTransferred = 0;
+      onProgress?.({ bytesTransferred, totalBytes });
+
+      if (!response.body) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        onProgress?.({ bytesTransferred: buffer.length, totalBytes: buffer.length });
+        return buffer;
+      }
+
+      const reader = response.body.getReader();
+      const chunks: Buffer[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        const chunk = Buffer.from(value);
+        chunks.push(chunk);
+        bytesTransferred += chunk.length;
+        onProgress?.({ bytesTransferred, totalBytes });
+      }
+
+      return Buffer.concat(chunks, bytesTransferred);
+    }
+
+    throw new Error("Too many redirects fetching media URL");
   }
 
   private async queryNotebook(
