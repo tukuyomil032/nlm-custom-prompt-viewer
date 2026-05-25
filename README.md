@@ -8,7 +8,7 @@ Recover and reuse custom prompts used by NotebookLM Studio artifacts from the co
 ![Bun](https://img.shields.io/badge/Bun-1.x-black?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.x-blue?style=flat-square)
 
-![Demo](assets/demo.gif)
+<img src="assets/demo.gif" width="1000" alt="Demo">
 
 </div>
 
