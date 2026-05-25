@@ -15,6 +15,6 @@ describe("i18n", () => {
   it("includes download-related messages", () => {
     expect(t("en", "prompt.select.downloadAfterGet")).toContain("Download");
     expect(t("ja", "errors.badSlideFormat")).toContain("slide-format");
-    expect(t("ja", "prompt.download.summary")).toContain("downloaded");
+    expect(t("ja", "prompt.select.artifacts")).toContain("1件以上");
   });
 });

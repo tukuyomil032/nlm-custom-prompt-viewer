@@ -33,6 +33,7 @@ const en: Dict = {
   "prompt.field.support": "support",
   "prompt.select.notebook": "Choose a notebook",
   "prompt.select.artifact": "Choose an artifact",
+  "prompt.select.artifacts": "Choose one or more artifacts",
   "prompt.select.type": "Filter artifact type",
   "prompt.select.limit": "Set list limit (blank = no limit)",
   "prompt.select.save": "Save output files?",
@@ -57,7 +58,7 @@ const en: Dict = {
   "prompt.get.help":
     "Get a prompt from one artifact.\n\nExamples:\n  nlm prompt get <notebookId> <artifactId>\n  nlm prompt get --save --format md\n  nlm prompt get --json\n\nIf listing fails in interactive mode, you can continue by entering notebookId/artifactId manually.",
   "prompt.download.help":
-    "Download one artifact.\n\nExamples:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\nBinary downloads show byte-accurate progress when content length is available.",
+    "Download one artifact.\n\nExamples:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download a1,a2\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\nIn interactive mode you can select multiple artifacts. Binary downloads show byte-accurate progress when content length is available.",
   "prompt.downloadAll.help":
     "Download all completed/exportable artifacts from a notebook.\n\nExamples:\n  nlm prompt download-all <notebookId>\n  nlm prompt download-all --slide-format pptx\n  nlm prompt download-all --out ./outputs/downloads/custom\n\nUnsupported, not-ready, and non-exportable artifacts are skipped and summarized at the end.",
   "prompt.fallback.notebookFetchFailed":
@@ -66,6 +67,7 @@ const en: Dict = {
     "Artifact listing failed. Continue with manual artifactId input. Reason: {reason}",
   "prompt.fallback.manualNotebookId": "Enter notebookId manually",
   "prompt.fallback.manualArtifactId": "Enter artifactId manually",
+  "prompt.fallback.manualArtifactIds": "Enter artifactIds manually (comma-separated)",
   "prompt.list.partialSummary": "Some artifacts have no prompt text in this list ({count}).",
   "prompt.list.partialMore": "...and more artifacts without prompt text.",
   "prompt.list.failure.unsupportedType": "unsupported type",
@@ -156,6 +158,7 @@ const ja: Dict = {
   "prompt.field.support": "support",
   "prompt.select.notebook": "ノートブックを選択してください",
   "prompt.select.artifact": "成果物を選択してください",
+  "prompt.select.artifacts": "成果物を1件以上選択してください",
   "prompt.select.type": "成果物タイプで絞り込みますか？",
   "prompt.select.limit": "表示件数を指定（空欄 = 制限なし）",
   "prompt.select.save": "結果をファイル保存しますか？",
@@ -180,7 +183,7 @@ const ja: Dict = {
   "prompt.get.help":
     "成果物1件のプロンプトを取得します。\n\n例:\n  nlm prompt get <notebookId> <artifactId>\n  nlm prompt get --save --format md\n  nlm prompt get --json\n\n対話モードで一覧取得に失敗した場合は、notebookId/artifactId手入力で続行できます。",
   "prompt.download.help":
-    "成果物をダウンロードします。\n\n例:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\nContent-Length が取れるバイナリは、バイト単位で正確な進捗を表示します。",
+    "成果物をダウンロードします。\n\n例:\n  nlm prompt download <notebookId> <artifactId>\n  nlm prompt download a1,a2\n  nlm prompt download --slide-format pptx\n  nlm prompt download --out ./outputs/downloads/custom\n\n対話モードでは複数成果物を選択できます。Content-Length が取れるバイナリは、バイト単位で正確な進捗を表示します。",
   "prompt.downloadAll.help":
     "ノートブック内の完了済み/出力可能な成果物をまとめてダウンロードします。\n\n例:\n  nlm prompt download-all <notebookId>\n  nlm prompt download-all --slide-format pptx\n  nlm prompt download-all --out ./outputs/downloads/custom\n\n未対応・未完了・未出力の成果物は最後に集計してスキップ表示します。",
   "prompt.fallback.notebookFetchFailed":
@@ -189,6 +192,7 @@ const ja: Dict = {
     "成果物一覧の取得に失敗したため、artifactId手入力に切り替えます。理由: {reason}",
   "prompt.fallback.manualNotebookId": "notebookIdを手入力してください",
   "prompt.fallback.manualArtifactId": "artifactIdを手入力してください",
+  "prompt.fallback.manualArtifactIds": "artifactId をカンマ区切りで手入力してください",
   "prompt.list.partialSummary": "この一覧でプロンプト本文が未抽出の成果物があります（{count}件）。",
   "prompt.list.partialMore": "…ほかにもプロンプト未抽出の成果物があります。",
   "prompt.list.failure.unsupportedType": "未対応タイプ",

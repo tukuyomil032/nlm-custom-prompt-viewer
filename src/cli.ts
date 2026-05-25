@@ -1,4 +1,4 @@
-import { cancel, confirm, isCancel, select, text } from "@clack/prompts";
+import { cancel, confirm, isCancel, multiselect, select, text } from "@clack/prompts";
 import chalk from "chalk";
 import cliProgress from "cli-progress";
 import { Command } from "commander";
@@ -481,6 +481,23 @@ async function pickSelect<T extends string>(
   return answer as T;
 }
 
+async function pickMultiSelect<T extends string>(
+  language: LanguageCode,
+  message: string,
+  options: Array<{ label: string; value: T; hint?: string }>,
+): Promise<T[] | null> {
+  const answer = await multiselect({
+    message,
+    options: options as never,
+    required: true,
+  });
+  if (isCancel(answer)) {
+    cancel(t(language, "common.canceled"));
+    return null;
+  }
+  return answer as T[];
+}
+
 async function pickText(
   language: LanguageCode,
   message: string,
@@ -658,6 +675,84 @@ async function resolveArtifactId(
   const selected = await pickSelect(
     language,
     t(language, "prompt.select.artifact"),
+    supported.map((artifact) => ({
+      value: artifact.id,
+      label: artifactLabel(artifact),
+      hint: `${shortDate(artifact.createdAt)} / ${artifact.id}`,
+    })),
+  );
+  return selected;
+}
+
+function parseArtifactIdList(input: string): string[] {
+  return Array.from(
+    new Set(
+      input
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+async function resolveArtifactIdsForDownload(
+  language: LanguageCode,
+  adapter: NotebookLmSdkAdapter,
+  notebookId: string,
+  provided?: string,
+): Promise<string[] | null> {
+  if (provided) {
+    const artifactIds = parseArtifactIdList(provided);
+    if (artifactIds.length === 0) {
+      throw new Error(t(language, "errors.requiredValue", { name: "artifactId" }));
+    }
+    return artifactIds;
+  }
+  if (!canPromptInteractively()) {
+    throw new Error(t(language, "errors.requiredValue", { name: "artifactId" }));
+  }
+
+  let artifacts: ArtifactRecord[] = [];
+  try {
+    artifacts = await adapter.listArtifacts(notebookId);
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        t(language, "prompt.fallback.artifactFetchFailed", {
+          reason: toErrorMessage(error),
+        }),
+      ),
+    );
+    const manualArtifactIds = await pickText(
+      language,
+      t(language, "prompt.fallback.manualArtifactIds"),
+      "artifact-id-1,artifact-id-2",
+    );
+    if (manualArtifactIds === null) return null;
+    const parsed = parseArtifactIdList(manualArtifactIds);
+    if (parsed.length === 0) {
+      throw new Error(t(language, "errors.requiredValue", { name: "artifactId" }));
+    }
+    return parsed;
+  }
+  if (artifacts.length === 0) {
+    throw new Error(t(language, "prompt.artifact.none"));
+  }
+
+  printArtifactCatalog(language, artifacts);
+
+  const supported = artifacts.filter((artifact) => artifact.type !== "unsupported");
+  const unsupportedCount = artifacts.length - supported.length;
+  if (unsupportedCount > 0) {
+    console.warn(chalk.yellow(t(language, "prompt.artifact.unsupportedWarning")));
+  }
+  if (supported.length === 0) {
+    throw new Error(t(language, "prompt.empty"));
+  }
+
+  const selected = await pickMultiSelect(
+    language,
+    t(language, "prompt.select.artifacts"),
     supported.map((artifact) => ({
       value: artifact.id,
       label: artifactLabel(artifact),
@@ -945,28 +1040,72 @@ async function runPromptDownload(
 ) {
   const notebookId = await resolveNotebookId(language, deps.adapter, input.notebookId);
   if (!notebookId) return;
-  const artifactId = await resolveArtifactId(language, deps.adapter, notebookId, input.artifactId);
-  if (!artifactId) return;
+  const artifactIds = await resolveArtifactIdsForDownload(
+    language,
+    deps.adapter,
+    notebookId,
+    input.artifactId,
+  );
+  if (!artifactIds || artifactIds.length === 0) return;
 
-  const info = await deps.adapter.getArtifactDownloadInfo(notebookId, artifactId);
-  if (!info) {
-    throw new Error(`artifactId=${artifactId} was not found.`);
+  const infos = await Promise.all(
+    artifactIds.map((artifactId) => deps.adapter.getArtifactDownloadInfo(notebookId, artifactId)),
+  );
+  const missingArtifactId = infos.findIndex((info) => info === null);
+  if (missingArtifactId >= 0) {
+    throw new Error(`artifactId=${artifactIds[missingArtifactId]} was not found.`);
   }
+  const resolvedInfos = infos.filter(
+    (info): info is NonNullable<(typeof infos)[number]> => info !== null,
+  );
+  const needsSlideFormat = resolvedInfos.some((info) => info.artifactType === "slides");
 
   const options = await resolveDownloadOptions(
     language,
     notebookId,
-    info.artifactType,
+    needsSlideFormat ? "mixed" : resolvedInfos[0].artifactType,
     input.options,
     Boolean(input.optionalPrompt),
   );
   if (!options) return;
-  const downloaded = await deps.downloadService.downloadArtifact(notebookId, artifactId, {
-    out: options.out,
-    slideFormat: parseSlideFormat(language, options.slideFormat),
-    progressFactory: createDownloadProgressFactory(),
-  });
-  console.log(`${t(language, "prompt.download.saved")}: ${downloaded.path}`);
+  const slideFormat = parseSlideFormat(language, options.slideFormat);
+  const progressFactory = createDownloadProgressFactory();
+
+  if (artifactIds.length === 1) {
+    const downloaded = await deps.downloadService.downloadArtifact(notebookId, artifactIds[0], {
+      out: options.out,
+      slideFormat,
+      progressFactory,
+    });
+    console.log(`${t(language, "prompt.download.saved")}: ${downloaded.path}`);
+    return;
+  }
+
+  const result: DownloadAllResult = {
+    downloaded: [],
+    skipped: [],
+    failed: [],
+  };
+  for (const artifactId of artifactIds) {
+    try {
+      const downloaded = await deps.downloadService.downloadArtifact(notebookId, artifactId, {
+        out: options.out,
+        slideFormat,
+        progressFactory,
+      });
+      result.downloaded.push(downloaded);
+    } catch (error) {
+      result.failed.push({
+        artifactId,
+        artifactTitle: artifactId,
+        artifactType: "selected",
+        reason: "download_failed",
+        detail: toErrorMessage(error),
+      });
+    }
+  }
+
+  printDownloadAllSummary(language, result);
 }
 
 async function runPromptDownloadAll(

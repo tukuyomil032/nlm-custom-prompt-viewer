@@ -44,6 +44,7 @@ describe("CLI help", () => {
 
     const note = t("en", "prompt.download.help");
     expect(note).toContain("prompt download");
+    expect(note).toContain("a1,a2");
     expect(note).toContain("slide-format");
   });
 

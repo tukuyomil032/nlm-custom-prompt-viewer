@@ -70,6 +70,7 @@ nlmv prompt get <notebookId> <artifactId> --save
 
 ```bash
 nlmv prompt download <notebookId> <artifactId>
+nlmv prompt download <notebookId> a1,a2
 nlmv prompt download-all <notebookId>
 ```
 
@@ -80,7 +81,7 @@ nlmv prompt download-all <notebookId>
 ```bash
 nlmv prompt list <notebookId> [--type <artifactType>] [--json] [--limit <n>] [--infer]
 nlmv prompt get <notebookId> <artifactId> [--json] [--save] [--format json|md] [--out <path>]
-nlmv prompt download <notebookId> <artifactId> [--out <path>] [--slide-format pdf|pptx]
+nlmv prompt download <notebookId> <artifactId|artifactId,artifactId> [--out <path>] [--slide-format pdf|pptx]
 nlmv prompt download-all <notebookId> [--out <path>] [--slide-format pdf|pptx]
 ```
 
@@ -172,7 +173,7 @@ to trigger inline prompts:
 ```bash
 nlmv prompt list    # prompts for notebook ID interactively
 nlmv prompt get     # prompts for notebook + artifact selection, then offers save/download
-nlmv prompt download     # prompts for notebook + artifact selection
+nlmv prompt download     # prompts for notebook + artifact multi-selection
 nlmv prompt download-all # prompts for notebook selection
 nlmv config set     # prompts for key and value
 ```
