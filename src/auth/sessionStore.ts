@@ -4,6 +4,12 @@ import path from "node:path";
 
 const KEYCHAIN_SERVICE = "nlm-prompt";
 const KEYCHAIN_ACCOUNT = "notebooklm-session";
+
+function isKeytarDisabled(): boolean {
+  const value = process.env.NLM_PROMPT_DISABLE_KEYTAR?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 function sessionFilePath(): string {
   const custom = process.env.NLM_PROMPT_SESSION_FILE;
   if (custom && custom.trim().length > 0) {
@@ -33,6 +39,10 @@ function isStorageState(value: unknown): boolean {
 }
 
 async function loadKeytar(): Promise<KeytarLike | null> {
+  if (isKeytarDisabled()) {
+    return null;
+  }
+
   try {
     const mod = (await import("keytar")) as Partial<KeytarLike>;
     if (
