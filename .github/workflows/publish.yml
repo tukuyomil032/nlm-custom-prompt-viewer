@@ -102,11 +102,20 @@ jobs:
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag_name }}
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Setup Node.js for npm Trusted Publishing
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check package contents
+        run: npm pack --dry-run
 
       - name: Publish package
         run: npm publish
