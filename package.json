@@ -1,6 +1,6 @@
 {
   "name": "nlm-custom-prompt-viewer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "CLI to recover Studio custom prompts from NotebookLM artifacts",
   "keywords": [
     "AI",
@@ -38,6 +38,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "prepack": "bun run build",
     "build": "bunx tsc -p tsconfig.json",
     "dev": "bun --watch src/index.ts",
     "test": "bunx vitest run",

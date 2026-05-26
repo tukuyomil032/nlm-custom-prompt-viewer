@@ -103,7 +103,7 @@ async function loadPackageMeta(): Promise<PackageMeta> {
   const payload = JSON.parse(raw) as { name?: unknown; version?: unknown };
   return {
     name: typeof payload.name === "string" ? payload.name : "nlm-custom-prompt-viewer",
-    version: typeof payload.version === "string" ? payload.version : "0.0.0",
+    version: typeof payload.version === "string" ? payload.version : "0.0.4",
   };
 }
 
