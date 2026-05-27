@@ -1651,6 +1651,54 @@ async function maybeRunStartupUpdateCheck(argv: string[]): Promise<void> {
   );
 }
 
+function createDownloadCommand(language: LanguageCode): Command {
+  const download = new Command("download");
+  download
+    .description(t(language, "prompt.command.download"))
+    .argument("[notebookId]", "NotebookLM notebook id")
+    .argument("[artifactId]", "Studio artifact id")
+    .option("--out <path>", "Output file or directory path")
+    .option("--slide-format <format>", "Slide deck format: pdf|pptx")
+    .addHelpText("after", `\n${t(language, "prompt.download.help")}`)
+    .action(
+      async (
+        notebookId: string | undefined,
+        artifactId: string | undefined,
+        options: DownloadCommandOptions,
+      ) => {
+        const deps = createRuntimeDeps();
+        const optionalPrompt = !options.out && !options.slideFormat;
+        await runPromptDownload(language, deps, {
+          notebookId,
+          artifactId,
+          options,
+          optionalPrompt,
+        });
+      },
+    );
+  return download;
+}
+
+function createDownloadAllCommand(language: LanguageCode): Command {
+  const downloadAll = new Command("download-all");
+  downloadAll
+    .description(t(language, "prompt.command.downloadAll"))
+    .argument("[notebookId]", "NotebookLM notebook id")
+    .option("--out <path>", "Output directory path")
+    .option("--slide-format <format>", "Slide deck format: pdf|pptx")
+    .addHelpText("after", `\n${t(language, "prompt.downloadAll.help")}`)
+    .action(async (notebookId: string | undefined, options: DownloadCommandOptions) => {
+      const deps = createRuntimeDeps();
+      const optionalPrompt = !options.out && !options.slideFormat;
+      await runPromptDownloadAll(language, deps, {
+        notebookId,
+        options,
+        optionalPrompt,
+      });
+    });
+  return downloadAll;
+}
+
 export function createProgram(language: LanguageCode): Command {
   const program = new Command("nlm");
   program
@@ -1662,6 +1710,8 @@ export function createProgram(language: LanguageCode): Command {
   program.addCommand(createConfigCommand(language));
   program.addCommand(createAuthCommand(language));
   program.addCommand(createUpdateCommand(language));
+  program.addCommand(createDownloadCommand(language));
+  program.addCommand(createDownloadAllCommand(language));
   return program;
 }
 
