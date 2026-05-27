@@ -1411,6 +1411,8 @@ async function runRootMenu(language: LanguageCode): Promise<void> {
     t(language, "cli.menu.message"),
     [
       { value: "prompt", label: t(language, "cli.menu.prompt") },
+      { value: "download", label: t(language, "cli.menu.download") },
+      { value: "downloadAll", label: t(language, "cli.menu.downloadAll") },
       { value: "config", label: t(language, "cli.menu.config") },
       { value: "auth", label: t(language, "cli.menu.auth") },
       { value: "update", label: t(language, "cli.menu.update") },
@@ -1422,6 +1424,12 @@ async function runRootMenu(language: LanguageCode): Promise<void> {
 
   const deps = createRuntimeDeps();
   if (picked === "prompt") return runPromptMenu(language, deps);
+  if (picked === "download") {
+    return runPromptDownload(language, deps, { options: {}, optionalPrompt: true });
+  }
+  if (picked === "downloadAll") {
+    return runPromptDownloadAll(language, deps, { options: {}, optionalPrompt: true });
+  }
   if (picked === "config") return runConfigMenu(language);
   if (picked === "auth") return runAuthMenu(language);
   return runUpdateMenu(language);
