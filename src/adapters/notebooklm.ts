@@ -38,6 +38,7 @@ const TRUSTED_MEDIA_DOMAINS = [
   ".gstatic.com",
   ".googleapis.com",
   ".usercontent.google.com",
+  ".google.com",
 ];
 
 function isRecord(value: unknown): value is UnknownRecord {
